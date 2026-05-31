@@ -283,6 +283,60 @@ class RemoteRepository(
         }
     }
 
+    fun resendNavigationHistory(
+        id: Long,
+        onResult: (NavigationShareResult) -> Unit = {},
+    ) {
+        scope.launch {
+            val entry = _uiState.value.navigationHistory.firstOrNull { it.id == id }
+            if (entry == null) {
+                onResult(
+                    NavigationShareResult(
+                        title = "Shared location",
+                        detail = "Destination is no longer in history",
+                        sent = false,
+                        saved = false,
+                        errorMessage = "Destination is no longer in history",
+                    ),
+                )
+                return@launch
+            }
+            val command = entry.toNavigateCommand()
+            if (command == null) {
+                onResult(
+                    NavigationShareResult(
+                        title = entry.title,
+                        detail = entry.detail,
+                        sent = false,
+                        saved = true,
+                        errorMessage = "No destination found in shared text",
+                    ),
+                )
+                return@launch
+            }
+            if (_uiState.value.connectionState !is RemoteConnectionState.Ready) {
+                connectSaved()
+                runCatching {
+                    kotlinx.coroutines.withTimeout(4_000) {
+                        transport.connectionState.first { it is RemoteConnectionState.Ready }
+                    }
+                }
+            }
+            val ready = _uiState.value.connectionState is RemoteConnectionState.Ready
+            val sent = if (ready) sendImmediate(command, showNavigationStatus = false) else false
+            val error = if (sent) null else _uiState.value.lastError ?: "Not connected to DisplayMirror"
+            onResult(
+                NavigationShareResult(
+                    title = entry.title,
+                    detail = entry.detail,
+                    sent = sent,
+                    saved = true,
+                    errorMessage = error,
+                ),
+            )
+        }
+    }
+
     fun deleteNavigationHistory(id: Long) {
         val updated = _uiState.value.navigationHistory.filterNot { it.id == id }
         settings.saveNavigationHistory(updated)
@@ -320,12 +374,12 @@ class RemoteRepository(
         sendForRefresh(RemoteCommand.RaceCharge(RaceChargeAction.Status))
     }
 
-    private suspend fun sendImmediate(command: RemoteCommand): Boolean {
+    private suspend fun sendImmediate(command: RemoteCommand, showNavigationStatus: Boolean = true): Boolean {
         var success = false
         runCatching {
             appendLog(ProtocolLogEntry.Direction.Tx, RemoteProtocolCodec.encodeCommand(command))
             val response = transport.send(command)
-            applyResponse(response)
+            applyResponse(response, showNavigationStatus = showNavigationStatus)
             if (response !is RemoteResponse.Error) {
                 success = true
                 applyCommandEcho(command)
@@ -367,7 +421,7 @@ class RemoteRepository(
         }
     }
 
-    private fun applyResponse(response: RemoteResponse) {
+    private fun applyResponse(response: RemoteResponse, showNavigationStatus: Boolean = true) {
         when (response) {
             is RemoteResponse.LockState -> _uiState.update {
                 it.copy(
@@ -435,9 +489,13 @@ class RemoteRepository(
 
             is RemoteResponse.NavigateResult -> _uiState.update {
                 it.copy(
-                    lastNavigationStatus = response.app?.let { app -> "Navigation sent to $app" }
-                        ?: response.status
-                        ?: "Navigation sent",
+                    lastNavigationStatus = if (showNavigationStatus) {
+                        response.app?.let { app -> "Navigation sent to $app" }
+                            ?: response.status
+                            ?: "Navigation sent"
+                    } else {
+                        it.lastNavigationStatus
+                    },
                     lastError = null,
                 )
             }
@@ -586,6 +644,10 @@ class RemoteRepository(
             sentAtMillis = now,
             previewText = preview,
             originalLink = originalLink ?: expandedUrl,
+            navLat = command.lat,
+            navLon = command.lon,
+            navLabel = command.label,
+            navQuery = command.query,
         )
         val updated = (listOf(entry) + _uiState.value.navigationHistory.filterNot {
             it.originalText == originalText || it.detail == detail
@@ -593,6 +655,31 @@ class RemoteRepository(
         settings.saveNavigationHistory(updated)
         _uiState.update { it.copy(navigationHistory = updated) }
         return entry
+    }
+
+    private fun NavigationHistoryEntry.toNavigateCommand(): RemoteCommand.Navigate? {
+        val storedCommand = when {
+            navLat != null && navLon != null -> runCatching {
+                RemoteCommand.Navigate(lat = navLat, lon = navLon, label = navLabel)
+            }.getOrNull()
+            !navQuery.isNullOrBlank() -> runCatching {
+                RemoteCommand.Navigate(query = navQuery)
+            }.getOrNull()
+            else -> null
+        }
+        if (storedCommand != null) return storedCommand
+
+        val candidates = listOfNotNull(
+            previewText,
+            detail,
+            title.takeUnless { it.equals("Destination", ignoreCase = true) },
+            originalLink,
+            originalText,
+        )
+        val parsed = candidates.mapNotNull { NavigationShareParser.parse(it) }
+        return parsed.firstOrNull { it.lat != null && it.lon != null }
+            ?: parsed.firstOrNull { !it.query.isNullOrBlank() && !it.query.startsWith("http", ignoreCase = true) }
+            ?: parsed.firstOrNull()
     }
 
     private fun String.toHistoryTitle(originalUrl: String?): String? {

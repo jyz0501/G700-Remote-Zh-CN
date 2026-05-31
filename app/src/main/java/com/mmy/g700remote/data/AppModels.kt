@@ -118,6 +118,10 @@ data class NavigationHistoryEntry(
     val sentAtMillis: Long,
     val previewText: String? = null,
     val originalLink: String? = null,
+    val navLat: Double? = null,
+    val navLon: Double? = null,
+    val navLabel: String? = null,
+    val navQuery: String? = null,
 )
 
 data class NavigationShareResult(

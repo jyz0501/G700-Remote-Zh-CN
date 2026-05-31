@@ -78,6 +78,8 @@ class G700RemoteViewModel(application: Application) : AndroidViewModel(applicati
     fun refreshNow() = repository.refreshNow()
     fun sendSharedNavigation(text: String, onResult: (NavigationShareResult) -> Unit = {}) =
         repository.sendSharedNavigation(text, onResult)
+    fun resendNavigationHistory(id: Long, onResult: (NavigationShareResult) -> Unit = {}) =
+        repository.resendNavigationHistory(id, onResult)
     fun deleteNavigationHistory(id: Long) = repository.deleteNavigationHistory(id)
     fun clearNavigationHistory() = repository.clearNavigationHistory()
     fun checkForUpdates() = viewModelScope.launch { updateManager.checkNow() }

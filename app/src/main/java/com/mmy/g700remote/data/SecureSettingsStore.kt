@@ -135,6 +135,10 @@ class SecureSettingsStore(context: Context) : SettingsStore {
                             sentAtMillis = item.optLong("sentAtMillis"),
                             previewText = item.optString("previewText").ifBlank { null },
                             originalLink = item.optString("originalLink").ifBlank { null },
+                            navLat = item.optNullableDouble("navLat"),
+                            navLon = item.optNullableDouble("navLon"),
+                            navLabel = item.optString("navLabel").ifBlank { null },
+                            navQuery = item.optString("navQuery").ifBlank { null },
                         ),
                     )
                 }
@@ -156,6 +160,10 @@ class SecureSettingsStore(context: Context) : SettingsStore {
                 .put("sentAtMillis", entry.sentAtMillis)
             entry.previewText?.let { item.put("previewText", it) }
             entry.originalLink?.let { item.put("originalLink", it) }
+            entry.navLat?.let { item.put("navLat", it) }
+            entry.navLon?.let { item.put("navLon", it) }
+            entry.navLabel?.let { item.put("navLabel", it) }
+            entry.navQuery?.let { item.put("navQuery", it) }
             array.put(item)
         }
         prefs.edit().putString(KEY_NAVIGATION_HISTORY, array.toString()).apply()
@@ -251,4 +259,9 @@ class SecureSettingsStore(context: Context) : SettingsStore {
         private const val KEY_LOGGING_ENABLED = "logging_enabled"
         private const val MAX_NAV_HISTORY = 50
     }
+}
+
+private fun JSONObject.optNullableDouble(key: String): Double? {
+    if (!has(key) || isNull(key)) return null
+    return optDouble(key).takeUnless { it.isNaN() }
 }

@@ -5,9 +5,11 @@ import com.mmy.g700remote.ble.ConnectionPreference
 import com.mmy.g700remote.ble.RemoteConnectionState
 import com.mmy.g700remote.ble.ScannedDevice
 import com.mmy.g700remote.protocol.RemoteCommand
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -39,7 +41,45 @@ class RemoteRepositoryTest {
         coroutineContext.cancelChildren()
     }
 
-    private class InMemorySettingsStore : SettingsStore {
+    @Test
+    fun resendsNavigationHistoryFromStoredCommand() = runTest {
+        val historyEntry = NavigationHistoryEntry(
+            id = 42L,
+            title = "Bahrain International Circuit",
+            detail = "26.0325, 50.5106",
+            originalText = "https://maps.app.goo.gl/example",
+            sentAtMillis = 1_234L,
+            originalLink = "https://maps.app.goo.gl/example",
+            navLat = 26.0325,
+            navLon = 50.5106,
+            navLabel = "Bahrain International Circuit",
+        )
+        val settings = InMemorySettingsStore(initialHistory = listOf(historyEntry))
+        val repository = RemoteRepository(FakeDisplayMirrorTransport(), settings, this)
+
+        repository.startScan()
+        advanceUntilIdle()
+        repository.pairAndConnect(repository.uiState.value.scanResults.first())
+        advanceUntilIdle()
+
+        val entry = repository.uiState.value.navigationHistory.first()
+        assertEquals(26.0325, entry.navLat ?: 0.0, 0.0001)
+        assertEquals(50.5106, entry.navLon ?: 0.0, 0.0001)
+
+        val resendResultDeferred = CompletableDeferred<NavigationShareResult>()
+        repository.resendNavigationHistory(entry.id) {
+            resendResultDeferred.complete(it)
+        }
+        val resendResult = withTimeout(5_000) { resendResultDeferred.await() }
+
+        assertTrue(resendResult.sent)
+        assertEquals(1, repository.uiState.value.navigationHistory.size)
+        coroutineContext.cancelChildren()
+    }
+
+    private class InMemorySettingsStore(
+        initialHistory: List<NavigationHistoryEntry> = emptyList(),
+    ) : SettingsStore {
         private var paired: PairedDevice? = null
         private var auth = true
         private var mapping = LockStateMapping.Unknown
@@ -50,7 +90,7 @@ class RemoteRepositoryTest {
         private var language = AppLanguage.English
         private var theme = AppTheme.G700Horizon
         private var colorMode = AppColorMode.Dark
-        private var history = emptyList<NavigationHistoryEntry>()
+        private var history = initialHistory
         private var regionalFeatures = false
 
         override fun getPairedDevice(): PairedDevice? = paired

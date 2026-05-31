@@ -228,6 +228,23 @@ fun G700RemoteApp(
         }
     }
 
+    fun resendNavigationHistory(entry: NavigationHistoryEntry) {
+        viewModel.resendNavigationHistory(entry.id) { result ->
+            scope.launch {
+                snackbarHostState.showSnackbar(
+                    translate(
+                        language,
+                        if (result.sent) "Destination sent to car" else "Destination could not be sent",
+                    ) + if (!result.sent && !result.errorMessage.isNullOrBlank()) {
+                        ": ${result.errorMessage}"
+                    } else {
+                        ""
+                    },
+                )
+            }
+        }
+    }
+
     val displayedState = if (demoMode) {
         state.copy(
             connectionState = RemoteConnectionState.Ready(TransportKind.Ble),
@@ -354,7 +371,7 @@ fun G700RemoteApp(
         } else if (showStandaloneHistory && !demoMode && state.pairedDevice == null) {
             NavigationHistoryScreen(
                 state = state,
-                onSendNavigationText = ::sendNavigationText,
+                onResendNavigationHistory = ::resendNavigationHistory,
                 onDelete = viewModel::deleteNavigationHistory,
                 onClearAll = viewModel::clearNavigationHistory,
                 onBack = { showStandaloneHistory = false },
@@ -385,7 +402,11 @@ fun G700RemoteApp(
                 onDownloadUpdate = { viewModel.downloadAndInstallUpdate(activity, it) },
                 onRefresh = { scope.launch { snackbarHostState.showSnackbar(translate(language, "Demo mode only. No command was sent to the car.")) } },
                 onShareLog = { onShareLog(viewModel.exportLogText()) },
-                onSendNavigationText = ::sendNavigationText,
+                onResendNavigationHistory = {
+                    scope.launch {
+                        snackbarHostState.showSnackbar(translate(language, "Demo mode only. No command was sent to the car."))
+                    }
+                },
                 onDeleteNavigationHistory = viewModel::deleteNavigationHistory,
                 onClearNavigationHistory = viewModel::clearNavigationHistory,
                 onDemoModeChanged = { enabled -> demoMode = enabled },
@@ -437,7 +458,7 @@ fun G700RemoteApp(
                 onDownloadUpdate = { viewModel.downloadAndInstallUpdate(activity, it) },
                 onRefresh = viewModel::refreshNow,
                 onShareLog = { onShareLog(viewModel.exportLogText()) },
-                onSendNavigationText = ::sendNavigationText,
+                onResendNavigationHistory = ::resendNavigationHistory,
                 onDeleteNavigationHistory = viewModel::deleteNavigationHistory,
                 onClearNavigationHistory = viewModel::clearNavigationHistory,
                 onDemoModeChanged = { enabled ->
@@ -865,7 +886,7 @@ private fun MainRemoteScaffold(
     onDownloadUpdate: (AppUpdateInfo) -> Unit,
     onRefresh: () -> Unit,
     onShareLog: () -> Unit,
-    onSendNavigationText: (String) -> Unit,
+    onResendNavigationHistory: (NavigationHistoryEntry) -> Unit,
     onDeleteNavigationHistory: (Long) -> Unit,
     onClearNavigationHistory: () -> Unit,
     onDemoModeChanged: (Boolean) -> Unit,
@@ -920,7 +941,7 @@ private fun MainRemoteScaffold(
             AppTab.Lighting -> LightingScreen(state, onCommand, modifier)
             AppTab.NavigationHistory -> NavigationHistoryScreen(
                 state = state,
-                onSendNavigationText = onSendNavigationText,
+                onResendNavigationHistory = onResendNavigationHistory,
                 onDelete = onDeleteNavigationHistory,
                 onClearAll = onClearNavigationHistory,
                 modifier = modifier,
@@ -1710,7 +1731,7 @@ private fun LightingScreen(
 @Composable
 private fun NavigationHistoryScreen(
     state: RemoteUiState,
-    onSendNavigationText: (String) -> Unit,
+    onResendNavigationHistory: (NavigationHistoryEntry) -> Unit,
     onDelete: (Long) -> Unit,
     onClearAll: () -> Unit,
     onBack: (() -> Unit)? = null,
@@ -1809,7 +1830,7 @@ private fun NavigationHistoryScreen(
                 NavigationHistoryRow(
                     entry = entry,
                     onOpenOriginal = { openOriginalShare(context, entry) },
-                    onResend = { onSendNavigationText(entry.originalText) },
+                    onResend = { onResendNavigationHistory(entry) },
                     onDelete = { pendingDelete = entry },
                 )
             }
@@ -3566,6 +3587,8 @@ private val ArabicTranslations = mapOf(
     "Links" to "الروابط",
     "Locations shared to the car can be resent from here." to "يمكن إعادة إرسال المواقع التي تمت مشاركتها مع السيارة من هنا.",
     "Sent to car" to "تم الإرسال للسيارة",
+    "Destination sent to car" to "تم إرسال الوجهة إلى السيارة",
+    "Destination could not be sent" to "تعذر إرسال الوجهة",
     "Saved for later" to "تم الحفظ لاحقاً",
     "Location not sent" to "لم يتم إرسال الموقع",
     "Preparing location" to "جاري تجهيز الموقع",
