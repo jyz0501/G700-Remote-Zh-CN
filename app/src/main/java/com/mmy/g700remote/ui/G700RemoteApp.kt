@@ -8,6 +8,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -99,6 +100,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -843,17 +845,22 @@ private fun ConnectionHeader(
                     )
                 }
             }
-            ExpressiveIconButton(onClick = onOpenHistory) {
-                Icon(Icons.Outlined.Link, contentDescription = tr("Shared links"))
-            }
-            ExpressiveIconButton(
-                onClick = onRefresh,
-                enabled = state.connectionState is RemoteConnectionState.Ready,
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Outlined.Refresh, contentDescription = tr("Refresh status"))
-            }
-            ExpressiveIconButton(onClick = onOpenSettings) {
-                Icon(Icons.Outlined.Settings, contentDescription = tr("Settings"))
+                ExpressiveIconButton(onClick = onOpenHistory) {
+                    Icon(Icons.Outlined.Link, contentDescription = tr("Shared links"))
+                }
+                ExpressiveIconButton(
+                    onClick = onRefresh,
+                    enabled = state.connectionState is RemoteConnectionState.Ready,
+                ) {
+                    Icon(Icons.Outlined.Refresh, contentDescription = tr("Refresh status"))
+                }
+                ExpressiveIconButton(onClick = onOpenSettings) {
+                    Icon(Icons.Outlined.Settings, contentDescription = tr("Settings"))
+                }
             }
         }
     }
@@ -959,31 +966,36 @@ private fun ExpressiveActionSurface(
         animationSpec = expressiveSpring(),
         label = "surface-border-color",
     )
-    Surface(
+    val shape = RoundedCornerShape(22.dp)
+    Box(
         modifier = modifier
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
             }
+            .clip(shape)
+            .background(if (enabled) containerColor else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.62f))
+            .border(BorderStroke(1.dp, borderColor), shape)
             .clickable(
                 enabled = enabled,
                 interactionSource = interactionSource,
                 indication = null,
                 onClick = onClick,
-            ),
-        shape = RoundedCornerShape(22.dp),
-        color = if (enabled) containerColor else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        contentColor = if (enabled) contentColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
-        tonalElevation = if (selected) 5.dp else 2.dp,
-        shadowElevation = if (pressed) 1.dp else 3.dp,
-        border = BorderStroke(1.dp, borderColor),
+            )
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally,
-            content = content,
-        )
+        androidx.compose.material3.ProvideTextStyle(MaterialTheme.typography.bodyMedium) {
+            Column(
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                CompositionLocalProvider(
+                    androidx.compose.material3.LocalContentColor provides if (enabled) contentColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f),
+                    content = { content() },
+                )
+            }
+        }
     }
 }
 
@@ -2139,7 +2151,7 @@ private fun ModeToggleBox(
 ) {
     val active = spec.checked == true
     ExpressiveActionSurface(
-        modifier = modifier.height(64.dp),
+        modifier = modifier.height(72.dp),
         enabled = enabled,
         selected = active,
         onClick = { if (active) spec.onOff() else spec.onOn() },
@@ -2162,7 +2174,7 @@ private fun ModeToggleBox(
                         null -> tr("Unknown")
                     },
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                 )
             }
@@ -2186,20 +2198,26 @@ private fun ActionBoxGrid(
                         selected = false,
                         onClick = action.onClick,
                         modifier = if (fullWidthLastSingle && rowActions.size == 1) {
-                            Modifier.fillMaxWidth().height(60.dp)
+                            Modifier.fillMaxWidth().height(68.dp)
                         } else {
-                            Modifier.weight(1f).height(60.dp)
+                            Modifier.weight(1f).height(68.dp)
                         },
                     ) {
-                        Icon(action.icon, contentDescription = null, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.height(5.dp))
-                        Text(
-                            action.label,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(action.icon, contentDescription = null, modifier = Modifier.size(21.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                action.label,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
                     }
                 }
                 repeat(if (fullWidthLastSingle && rowActions.size == 1) 0 else columns - rowActions.size) {
@@ -2371,7 +2389,7 @@ private fun HeroCommandButton(
         label = "hero-command-scale",
     )
     val size by animateDpAsState(
-        targetValue = if (pressed && enabled) 106.dp else 118.dp,
+        targetValue = if (pressed && enabled) 130.dp else 142.dp,
         animationSpec = expressiveSpring(),
         label = "hero-command-size",
     )
@@ -2396,9 +2414,9 @@ private fun HeroCommandButton(
     ) {
         Box(contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(icon, contentDescription = null, modifier = Modifier.size(36.dp))
-                Spacer(Modifier.height(9.dp))
-                Text(text, fontWeight = FontWeight.Bold)
+                Icon(icon, contentDescription = null, modifier = Modifier.size(42.dp))
+                Spacer(Modifier.height(10.dp))
+                Text(text, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
             }
         }
     }

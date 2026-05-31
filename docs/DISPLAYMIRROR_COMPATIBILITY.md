@@ -1,6 +1,6 @@
 # DisplayMirror Compatibility
 
-This document records the compatibility assumptions used for the v1.4.1 release. It is a source summary, not a replacement for re-checking future DisplayMirror APK releases.
+This document records the compatibility assumptions used for the v1.4.2 release. It is a source summary, not a replacement for re-checking future DisplayMirror APK releases.
 
 ## Head Unit Requirement
 
@@ -89,7 +89,7 @@ DisplayMirror has internal vehicle fields beyond this list, but the app only exp
 - `mirror`: sends `fold` and `unfold` actions.
 - Foreground refresh sends `status`, `climate status`, `parking_charge status`, and `race_charge status` every 3 seconds while connected.
 
-## v1.4.1 Notes
+## v1.4.x Notes
 
 - Google Maps shares may arrive as long URLs, short `maps.app.goo.gl` URLs, `/@lat,lon` paths, or embedded `!3d...!4d...` data. The phone app resolves redirects and extracts coordinates before sending `navigate`, so the head unit receives a clean location instead of a raw Google URL.
 - Shared destinations are stored locally for resend/delete history. The history is phone-local and not synced.
