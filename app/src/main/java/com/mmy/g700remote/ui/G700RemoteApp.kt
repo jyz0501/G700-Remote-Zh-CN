@@ -1695,11 +1695,40 @@ private fun HomeControlDashboard(
     )
     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
         val compact = maxWidth < 380.dp
-        val sideWidth = if (compact) 68.dp else 76.dp
-        val tileHeight = if (compact) 62.dp else 68.dp
-        val tileGap = if (compact) 10.dp else 12.dp
-        val heroHalo = if (compact) 142.dp else 156.dp
-        val heroButton = if (compact) 116.dp else 128.dp
+        val narrow = maxWidth < 330.dp
+        val heroHalo = when {
+            narrow -> 132.dp
+            compact -> 142.dp
+            else -> 156.dp
+        }
+        val centerWidth = heroHalo + 4.dp
+        val sideGutter = when {
+            narrow -> 16.dp
+            compact -> 20.dp
+            else -> 28.dp
+        }
+        val minSide = when {
+            narrow -> 72.dp
+            compact -> 84.dp
+            else -> 92.dp
+        }
+        val maxSide = if (compact) 94.dp else 106.dp
+        val sideWidth = (((maxWidth - centerWidth - sideGutter).value / 2f).dp).coerceIn(minSide, maxSide)
+        val tileHeight = when {
+            narrow -> 62.dp
+            compact -> 68.dp
+            else -> 72.dp
+        }
+        val tileGap = when {
+            narrow -> 8.dp
+            compact -> 10.dp
+            else -> 12.dp
+        }
+        val heroButton = when {
+            narrow -> 108.dp
+            compact -> 116.dp
+            else -> 128.dp
+        }
         val titleStyle = if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineSmall
         val subtitleStyle = if (compact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium
 
@@ -1781,33 +1810,69 @@ private fun HomeTelemetryColumn(
 
 @Composable
 private fun HomeTelemetryTile(tile: TileData, height: Dp) {
-    Column(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
             .height(height)
             .padding(horizontal = 2.dp, vertical = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+        contentAlignment = Alignment.Center,
     ) {
-        Icon(tile.icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = tile.iconTint.copy(alpha = 0.92f))
-        Spacer(Modifier.height(4.dp))
-        Text(
-            tile.label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.92f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
+        val tight = maxWidth < 84.dp || maxHeight <= 64.dp
+        val valueNeedsFit = tile.value.length > 7
+        val iconSize = if (tight) 16.dp else 18.dp
+        val labelStyle = MaterialTheme.typography.labelSmall.copy(
+            fontSize = if (tight) 11.sp else 12.sp,
+            lineHeight = 14.sp,
         )
-        Text(
-            tile.value,
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
+        val valueStyle = MaterialTheme.typography.bodyLarge.copy(
+            fontSize = when {
+                tight || valueNeedsFit -> 16.sp
+                else -> 18.sp
+            },
+            lineHeight = 20.sp,
         )
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Icon(tile.icon, contentDescription = null, modifier = Modifier.size(iconSize), tint = tile.iconTint.copy(alpha = 0.92f))
+            Spacer(Modifier.height(3.dp))
+            Text(
+                tile.label,
+                style = labelStyle,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.92f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(1.dp))
+            if (metricValueUsesLtr(tile.value)) {
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                    Text(
+                        tile.value,
+                        style = valueStyle,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center,
+                        softWrap = false,
+                    )
+                }
+            } else {
+                Text(
+                    tile.value,
+                    style = valueStyle,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    softWrap = false,
+                )
+            }
+        }
     }
 }
 
@@ -4186,6 +4251,9 @@ private fun requestCabinAirToggle(
     }
 }
 
+private fun metricValueUsesLtr(value: String): Boolean =
+    value.any { it.isDigit() } || value.any { it == '%' || it == '°' }
+
 private fun formatTemp(value: Double): String = "%.1f °C".format(value)
 
 private fun formatTimeAgo(value: Long): String =
@@ -4362,6 +4430,7 @@ private fun releaseNotes(language: AppLanguage): ReleaseNotesCopy =
                 "تحسّن تحديث الحالة عند الاقتراب من السيارة عبر BLE لتحديث آخر حالة وموقع عند الإمكان بدون فتح التطبيق يدوياً.",
                 "تحسّن عرض آخر تحديث بالتواريخ القريبة مثل اليوم وأمس وقبل عدة أيام، مع صياغة عربية أوضح للوقت.",
                 "تمت إضافة أساس تقني لتحسين الاستقرار وفهم استخدام الميزات ودعم قدرات مستقبلية.",
+                "إصلاحات وتحسينات بسيطة لعرض بيانات الصفحة الرئيسية بوضوح في العربية والإنجليزية.",
             ),
         )
     } else {
@@ -4374,6 +4443,7 @@ private fun releaseNotes(language: AppLanguage): ReleaseNotesCopy =
                 "Nearby BLE wake now performs a short sync attempt when possible, so the last status and location stay fresher.",
                 "Last-status timestamps now read better across today, yesterday, recent days, and Arabic time wording.",
                 "Added a technical foundation for better stability, feature understanding, and future capabilities.",
+                "Bug fixes and layout polish for Home telemetry text in English and Arabic.",
             ),
         )
     }
