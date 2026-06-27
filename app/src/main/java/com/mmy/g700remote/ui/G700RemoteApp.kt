@@ -5761,8 +5761,9 @@ private fun releaseNotes(language: AppLanguage): ReleaseNotesCopy =
     if (language == AppLanguage.Arabic) {
         ReleaseNotesCopy(
             title = "ما الجديد في الإصدار ${BuildConfig.VERSION_NAME}",
-            intro = "إعداد أبسط عبر رمز QR، مع تفعيل التحكم السحابي عن بُعد.",
+            intro = "توافق مع DisplayMirror 3.3 وإصلاح الاتصال، مع التحكم السحابي عن بُعد.",
             items = listOf(
+                "إصلاح التوافق مع DisplayMirror 3.3 (الإصدار 5 من البروتوكول) — حل خطأ \"يلزم التحديث\" عند الاتصال.",
                 "التحكم السحابي عن بُعد أصبح يعمل: يتصل التطبيق بسيارتك من أي مكان عبر رمز الإقران.",
                 "إعداد جديد: سجّل الدخول ثم امسح رمز QR من شاشة السيارة — دون بحث بلوتوث أو إدخال رمز يدوي.",
                 "ربط السيارة بحسابك السحابي تلقائياً عند مسح الرمز، مع تحكم محلي عبر البلوتوث وWi-Fi.",
@@ -5777,8 +5778,9 @@ private fun releaseNotes(language: AppLanguage): ReleaseNotesCopy =
     } else {
         ReleaseNotesCopy(
             title = "What's new in ${BuildConfig.VERSION_NAME}",
-            intro = "A simpler QR-based setup, now with working remote cloud control.",
+            intro = "DisplayMirror 3.3 compatibility and a connection fix, with remote cloud control.",
             items = listOf(
+                "Fixed DisplayMirror 3.3 compatibility (protocol v5) — resolves the \"update required\" error on connect.",
                 "Remote cloud control now works: reach your car from anywhere using the pairing QR.",
                 "New setup: sign in, then scan the QR code on the car screen — no Bluetooth search or manual code entry.",
                 "Scanning binds the car to your cloud account automatically, with local control over Bluetooth and Wi-Fi.",

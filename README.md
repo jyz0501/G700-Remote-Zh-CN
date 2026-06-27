@@ -12,7 +12,7 @@ This repository started from the v1.2 baseline and now tracks the v2.0.0 release
 - Minimum Android: API 30
 - Target/compile SDK: API 36
 - UI: Jetpack Compose Material 3 with an expressive spring-motion surface system
-- Protocol: DisplayMirror remote protocol v4 (DisplayMirror app build 3.2)
+- Protocol: DisplayMirror remote protocol v5 (DisplayMirror app build 3.3; min client version 5)
 - Transports: BLE, LAN/mDNS, and **Cloud relay** (WebSocket)
 - Account: DisplayMirror cloud sign-in (PocketBase) with QR-code car pairing
 - Languages: English and Arabic

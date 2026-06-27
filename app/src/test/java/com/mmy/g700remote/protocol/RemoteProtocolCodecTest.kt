@@ -11,7 +11,7 @@ class RemoteProtocolCodecTest {
     fun serializesCommandsWithExpectedFields() {
         val hello = JSONObject(RemoteProtocolCodec.encodeCommand(RemoteCommand.Hello("123456")))
         assertEquals("hello", hello.getString("cmd"))
-        assertEquals(4, hello.getInt("protocolVersion"))
+        assertEquals(RemoteProtocolCodec.PROTOCOL_VERSION, hello.getInt("protocolVersion"))
         assertEquals("123456", hello.getString("pairingCode"))
 
         val seat = JSONObject(

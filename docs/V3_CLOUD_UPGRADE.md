@@ -47,8 +47,13 @@ The 6-digit `code` is still the secret the headunit checks in `hello`; QR just c
 ## 3. Transport (now three)
 
 `hello` handshake is identical across all transports:
-`{"cmd":"hello","protocolVersion":4,"pairingCode":"<code>"}` →
-`{"type":"helloResult","success":true,"protocolVersion":4}`.
+`{"cmd":"hello","protocolVersion":5,"pairingCode":"<code>"}` →
+`{"type":"helloResult","success":true,"protocolVersion":5}`.
+
+> DisplayMirror **3.3** raised `PROTOCOL_VERSION` to **5** and `MIN_CLIENT_VERSION` to **5**
+> (3.1/3.2 were 4 / 2). A client sending `protocolVersion < 5` is rejected with
+> `update_required`. The app sends 5 (`RemoteProtocolCodec.PROTOCOL_VERSION`), which older cars
+> also accept. The command/response surface is otherwise unchanged from 3.2.
 
 - BLE GATT (unchanged UUIDs), LAN/mDNS TCP 9274 (unchanged) — local.
 - **NEW Cloud relay (WebSocket).** Phone connects to `wss://car.wowbooking.one` (phone leg),

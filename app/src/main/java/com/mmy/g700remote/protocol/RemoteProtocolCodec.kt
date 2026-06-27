@@ -3,7 +3,9 @@ package com.mmy.g700remote.protocol
 import java.nio.charset.StandardCharsets
 
 object RemoteProtocolCodec {
-    const val PROTOCOL_VERSION = 4
+    // DisplayMirror 3.3 raised PROTOCOL_VERSION to 5 and MIN_CLIENT_VERSION to 5, so the car
+    // rejects anything below 5 with update_required. We send 5; older cars (min 2) still accept it.
+    const val PROTOCOL_VERSION = 5
 
     fun encodeCommand(command: RemoteCommand): String = command.toJson().toString()
 
