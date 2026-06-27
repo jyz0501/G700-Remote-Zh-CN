@@ -128,6 +128,33 @@ class RemoteRepositoryTest {
             paired = null
         }
 
+        private var cloudAccount: com.mmy.g700remote.cloud.CloudAccount? = null
+        private var boundCar: com.mmy.g700remote.cloud.BoundCar? = null
+        private var cloudEnabled = true
+
+        override fun getCloudAccount(): com.mmy.g700remote.cloud.CloudAccount? = cloudAccount
+        override fun saveCloudAccount(account: com.mmy.g700remote.cloud.CloudAccount) {
+            cloudAccount = account
+        }
+
+        override fun clearCloudAccount() {
+            cloudAccount = null
+        }
+
+        override fun getBoundCar(): com.mmy.g700remote.cloud.BoundCar? = boundCar
+        override fun saveBoundCar(car: com.mmy.g700remote.cloud.BoundCar) {
+            boundCar = car
+        }
+
+        override fun clearBoundCar() {
+            boundCar = null
+        }
+
+        override fun isCloudEnabled(): Boolean = cloudEnabled
+        override fun setCloudEnabled(enabled: Boolean) {
+            cloudEnabled = enabled
+        }
+
         override fun getPairingCode(): String = pairingCode
         override fun setPairingCode(code: String) {
             pairingCode = code

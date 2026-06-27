@@ -4,6 +4,7 @@ import com.mmy.g700remote.ble.ConnectionPreference
 import com.mmy.g700remote.ble.RemoteConnectionState
 import com.mmy.g700remote.ble.ScannedDevice
 import com.mmy.g700remote.ble.TransportKind
+import com.mmy.g700remote.cloud.BoundCar
 
 data class PairedDevice(
     val name: String?,
@@ -155,6 +156,60 @@ data class NavigationHistoryEntry(
     val navQuery: String? = null,
 )
 
+/** A single camera image (snapshot or live frame), base64 JPEG plus dimensions. */
+data class CameraFrame(
+    val dataBase64: String,
+    val width: Int? = null,
+    val height: Int? = null,
+    val seq: Int? = null,
+    val capturedAtMillis: Long = System.currentTimeMillis(),
+)
+
+data class SentinelAlertUi(
+    val event: Int?,
+    val eventName: String?,
+    val time: String?,
+    val thumbBase64: String?,
+    val receivedAtMillis: Long = System.currentTimeMillis(),
+)
+
+data class AudioUi(
+    val eqMode: Int? = null,
+    val balance: Int? = null,
+    val balanceMin: Int? = null,
+    val balanceMax: Int? = null,
+    val fade: Int? = null,
+    val fadeMin: Int? = null,
+    val fadeMax: Int? = null,
+    val surround: Boolean? = null,
+    val loudness: Boolean? = null,
+)
+
+data class CabinCoolingUi(
+    val enabled: Boolean? = null,
+    val autonomous: Boolean? = null,
+    val state: String? = null,
+    val reason: String? = null,
+    val targetTemp: Double? = null,
+    val socFloor: Int? = null,
+    val scheduleEnabled: Boolean? = null,
+    val scheduleTime: String? = null,
+    val scheduleLeadMinutes: Int? = null,
+)
+
+/** Aggregated camera UI state. */
+data class CameraUiState(
+    val cameraIds: List<String> = emptyList(),
+    val selectedCameraId: String? = null,
+    val snapshot: CameraFrame? = null,
+    val liveFrame: CameraFrame? = null,
+    val liveViewActive: Boolean = false,
+    val loadingSnapshot: Boolean = false,
+    val sentinelArmed: Boolean = false,
+    val sentinelAlerts: List<SentinelAlertUi> = emptyList(),
+    val lastCameraError: String? = null,
+)
+
 data class NavigationShareResult(
     val title: String,
     val detail: String,
@@ -200,4 +255,17 @@ data class RemoteUiState(
     val lastSeenReleaseNotesVersion: String? = null,
     val lastNavigationStatus: String? = null,
     val lastError: String? = null,
-)
+    // Cloud account + binding
+    val cloudEnabled: Boolean = true,
+    val accountEmail: String? = null,
+    val boundCar: BoundCar? = null,
+    val cloudBusy: Boolean = false,
+    val cloudNotice: String? = null,
+    // New v3 feature state
+    val camera: CameraUiState = CameraUiState(),
+    val audio: AudioUi? = null,
+    val cabinCooling: CabinCoolingUi? = null,
+    val lastSceneStatus: String? = null,
+) {
+    val isSignedIn: Boolean get() = accountEmail != null
+}

@@ -130,6 +130,59 @@ sealed class RemoteCommand {
         override val expectedResponseTypes: Set<String> = setOf("climateState", "error")
     }
 
+    object Cameras : RemoteCommand() {
+        override val cmd: String = "cameras"
+        override val expectedResponseTypes: Set<String> = setOf("cameraList", "error")
+    }
+
+    data class Snapshot(
+        val camera: String = "0",
+        val requestId: String? = null,
+    ) : RemoteCommand() {
+        override val cmd: String = "snapshot"
+        override val expectedResponseTypes: Set<String> = setOf("snapshotPending", "snapshot", "error")
+    }
+
+    data class LiveView(
+        val action: StartStopAction,
+        val camera: String = "0",
+    ) : RemoteCommand() {
+        override val cmd: String = "live_view"
+        override val expectedResponseTypes: Set<String> = setOf("liveView", "error")
+    }
+
+    data class Sentinel(val action: StartStopAction) : RemoteCommand() {
+        override val cmd: String = "sentinel"
+        override val expectedResponseTypes: Set<String> = setOf("sentinel", "error")
+    }
+
+    data class Scene(val scene: SceneKind) : RemoteCommand() {
+        override val cmd: String = "scene"
+        override val sensitive: Boolean = scene == SceneKind.CarWash
+        override val expectedResponseTypes: Set<String> = setOf("scene", "error")
+    }
+
+    object Audio : RemoteCommand() {
+        override val cmd: String = "audio"
+        override val expectedResponseTypes: Set<String> = setOf("audio", "error")
+    }
+
+    data class AudioSet(
+        val action: AudioSetAction,
+        val value: Any,
+    ) : RemoteCommand() {
+        override val cmd: String = "audio_set"
+        override val expectedResponseTypes: Set<String> = setOf("audio", "error")
+    }
+
+    data class CabinCooling(
+        val action: CabinCoolingAction,
+        val config: JSONObject? = null,
+    ) : RemoteCommand() {
+        override val cmd: String = "cabin_cooling"
+        override val expectedResponseTypes: Set<String> = setOf("cabinCoolingState", "error")
+    }
+
     fun toJson(): JSONObject {
         val json = JSONObject().put("cmd", cmd)
         when (this) {
@@ -165,6 +218,25 @@ sealed class RemoteCommand {
                 position?.let { json.put("position", it.wireValue) }
                 level?.let { json.put("level", it.coerceIn(0, 3)) }
             }
+            Cameras, Audio -> Unit
+            is Snapshot -> {
+                json.put("camera", camera)
+                requestId?.let { json.put("id", it) }
+            }
+            is LiveView -> {
+                json.put("action", action.wireValue)
+                json.put("camera", camera)
+            }
+            is Sentinel -> json.put("action", action.wireValue)
+            is Scene -> json.put("scene", scene.wireValue)
+            is AudioSet -> {
+                json.put("action", action.wireValue)
+                json.put("value", value)
+            }
+            is CabinCooling -> {
+                json.put("action", action.wireValue)
+                config?.keys()?.forEach { key -> json.put(key, config.get(key)) }
+            }
         }
         return json
     }
@@ -187,7 +259,49 @@ sealed class RemoteCommand {
         is ParkingCharge -> "Parking charge ${action.label}"
         is RaceCharge -> "Race charge ${action.label}"
         is Climate -> "Climate ${action.label}"
+        Cameras -> "List cameras"
+        is Snapshot -> "Camera snapshot"
+        is LiveView -> "Live view ${action.label}"
+        is Sentinel -> "Sentinel ${action.label}"
+        is Scene -> "Scene ${scene.label}"
+        Audio -> "Audio status"
+        is AudioSet -> "Audio ${action.label}"
+        is CabinCooling -> "Cabin cooling ${action.label}"
     }
+}
+
+enum class StartStopAction(val wireValue: String, val label: String) {
+    Start("start", "start"),
+    Stop("stop", "stop"),
+}
+
+enum class SceneKind(val wireValue: String, val label: String) {
+    BigBed("bigbed", "Big Bed"),
+    Cinema("cinema", "Cinema"),
+    Rescue("rescue", "Rescue"),
+    Pet("pet", "Pet Mode"),
+    CarWash("carwash", "Car Wash"),
+    LightShow("lightshow", "Light Show"),
+    Resting("resting", "Resting"),
+    Romance("romance", "Romance"),
+}
+
+enum class AudioSetAction(val wireValue: String, val label: String) {
+    Loudness("loudness", "loudness"),
+    Surround("surround", "surround"),
+    EqMode("eq_mode", "EQ mode"),
+    Balance("balance", "balance"),
+    Fade("fade", "fade"),
+}
+
+enum class CabinCoolingAction(val wireValue: String, val label: String) {
+    Enable("enable", "enable"),
+    Disable("disable", "disable"),
+    SetConfig("set_config", "set config"),
+    SetSchedule("set_schedule", "set schedule"),
+    TriggerNow("trigger_now", "cool now"),
+    GetConfig("get_config", "get config"),
+    Status("status", "status"),
 }
 
 enum class WindowAction(val wireValue: String, val label: String) {
@@ -230,6 +344,8 @@ enum class ClimateAction(val wireValue: String, val label: String) {
     Status("status", "status"),
     AcOn("ac_on", "AC on"),
     AcOff("ac_off", "AC off"),
+    HvacOn("hvac_on", "HVAC on"),
+    HvacOff("hvac_off", "HVAC off"),
     SetTempLeft("set_temp_left", "left temp"),
     SetTempRight("set_temp_right", "right temp"),
     SetFanSpeed("set_fan_speed", "fan speed"),

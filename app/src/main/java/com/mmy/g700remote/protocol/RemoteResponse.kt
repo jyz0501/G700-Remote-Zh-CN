@@ -1,5 +1,6 @@
 package com.mmy.g700remote.protocol
 
+import org.json.JSONArray
 import org.json.JSONObject
 
 sealed class RemoteResponse {
@@ -87,8 +88,112 @@ sealed class RemoteResponse {
         val error: String?,
         val message: String?,
         override val raw: String,
+        val retryAfterSec: Int? = null,
     ) : RemoteResponse() {
         override val type: String = "error"
+    }
+
+    data class AudioState(
+        val eqMode: Int?,
+        val balance: Int?,
+        val balanceMin: Int?,
+        val balanceMax: Int?,
+        val fade: Int?,
+        val fadeMin: Int?,
+        val fadeMax: Int?,
+        val surround: Boolean?,
+        val loudness: Boolean?,
+        override val raw: String,
+    ) : RemoteResponse() {
+        override val type: String = "audio"
+    }
+
+    data class CabinCoolingStateResponse(
+        val enabled: Boolean?,
+        val autonomous: Boolean?,
+        val state: String?,
+        val reason: String?,
+        val cabinTemp: Double?,
+        val outdoorTemp: Double?,
+        val targetTemp: Double?,
+        val socFloor: Int?,
+        val batterySoc: Int?,
+        val plugged: Boolean?,
+        val keepAliveOn: Boolean?,
+        val scheduleEnabled: Boolean?,
+        val scheduleTime: String?,
+        val scheduleLeadMinutes: Int?,
+        override val raw: String,
+    ) : RemoteResponse() {
+        override val type: String = "cabinCoolingState"
+    }
+
+    data class SceneResult(
+        val scene: String?,
+        val ok: Boolean?,
+        override val raw: String,
+    ) : RemoteResponse() {
+        override val type: String = "scene"
+    }
+
+    data class CameraList(
+        val cameras: List<String>,
+        override val raw: String,
+    ) : RemoteResponse() {
+        override val type: String = "cameraList"
+    }
+
+    data class SnapshotPending(
+        val id: String?,
+        override val raw: String,
+    ) : RemoteResponse() {
+        override val type: String = "snapshotPending"
+    }
+
+    data class Snapshot(
+        val ok: Boolean,
+        val width: Int?,
+        val height: Int?,
+        val dataBase64: String?,
+        val error: String?,
+        val id: String?,
+        override val raw: String,
+    ) : RemoteResponse() {
+        override val type: String = "snapshot"
+    }
+
+    data class LiveViewState(
+        val state: String?,
+        override val raw: String,
+    ) : RemoteResponse() {
+        override val type: String = "liveView"
+    }
+
+    data class LiveFrame(
+        val seq: Int?,
+        val width: Int?,
+        val height: Int?,
+        val dataBase64: String?,
+        override val raw: String,
+    ) : RemoteResponse() {
+        override val type: String = "liveFrame"
+    }
+
+    data class SentinelState(
+        val state: String?,
+        override val raw: String,
+    ) : RemoteResponse() {
+        override val type: String = "sentinel"
+    }
+
+    data class SentinelAlert(
+        val event: Int?,
+        val eventName: String?,
+        val time: String?,
+        val thumbBase64: String?,
+        override val raw: String,
+    ) : RemoteResponse() {
+        override val type: String = "sentinelAlert"
     }
 
     data class Unknown(
@@ -168,6 +273,93 @@ sealed class RemoteResponse {
                 "error" -> Error(
                     error = json.optStringOrNull("error"),
                     message = json.optStringOrNull("message"),
+                    retryAfterSec = json.optIntOrNull("retryAfterSec"),
+                    raw = raw,
+                )
+
+                "audio" -> AudioState(
+                    eqMode = json.optIntOrNull("eqMode"),
+                    balance = json.optIntOrNull("balance"),
+                    balanceMin = json.optIntOrNull("balanceMin"),
+                    balanceMax = json.optIntOrNull("balanceMax"),
+                    fade = json.optIntOrNull("fade"),
+                    fadeMin = json.optIntOrNull("fadeMin"),
+                    fadeMax = json.optIntOrNull("fadeMax"),
+                    surround = json.optBooleanOrNull("surround"),
+                    loudness = json.optBooleanOrNull("loudness"),
+                    raw = raw,
+                )
+
+                "cabinCoolingState" -> {
+                    val schedule = json.optJSONObject("schedule")
+                    CabinCoolingStateResponse(
+                        enabled = json.optBooleanOrNull("enabled"),
+                        autonomous = json.optBooleanOrNull("autonomous"),
+                        state = json.optStringOrNull("state"),
+                        reason = json.optStringOrNull("reason"),
+                        cabinTemp = json.optDoubleOrNull("cabinTemp"),
+                        outdoorTemp = json.optDoubleOrNull("outdoorTemp"),
+                        targetTemp = json.optDoubleOrNull("targetTemp"),
+                        socFloor = json.optIntOrNull("socFloor"),
+                        batterySoc = json.optIntOrNull("batterySOC"),
+                        plugged = json.optBooleanOrNull("plugged"),
+                        keepAliveOn = json.optBooleanOrNull("keepAliveOn"),
+                        scheduleEnabled = schedule?.optBooleanOrNull("enabled"),
+                        scheduleTime = schedule?.optStringOrNull("time"),
+                        scheduleLeadMinutes = schedule?.optIntOrNull("leadMinutes"),
+                        raw = raw,
+                    )
+                }
+
+                "scene" -> SceneResult(
+                    scene = json.optStringOrNull("scene"),
+                    ok = json.optBooleanOrNull("ok"),
+                    raw = raw,
+                )
+
+                "cameraList" -> CameraList(
+                    cameras = json.optJSONArray("cameras").toStringList(),
+                    raw = raw,
+                )
+
+                "snapshotPending" -> SnapshotPending(
+                    id = json.optStringOrNull("id"),
+                    raw = raw,
+                )
+
+                "snapshot" -> Snapshot(
+                    ok = json.optBoolean("ok", false),
+                    width = json.optIntOrNull("w"),
+                    height = json.optIntOrNull("h"),
+                    dataBase64 = json.optStringOrNull("data"),
+                    error = json.optStringOrNull("error"),
+                    id = json.optStringOrNull("id"),
+                    raw = raw,
+                )
+
+                "liveView" -> LiveViewState(
+                    state = json.optStringOrNull("state"),
+                    raw = raw,
+                )
+
+                "liveFrame" -> LiveFrame(
+                    seq = json.optIntOrNull("seq"),
+                    width = json.optIntOrNull("w"),
+                    height = json.optIntOrNull("h"),
+                    dataBase64 = json.optStringOrNull("data"),
+                    raw = raw,
+                )
+
+                "sentinel" -> SentinelState(
+                    state = json.optStringOrNull("state"),
+                    raw = raw,
+                )
+
+                "sentinelAlert" -> SentinelAlert(
+                    event = json.optIntOrNull("event"),
+                    eventName = json.optStringOrNull("eventName"),
+                    time = json.optStringOrNull("time"),
+                    thumbBase64 = json.optStringOrNull("thumb"),
                     raw = raw,
                 )
 
@@ -188,3 +380,10 @@ private fun JSONObject.optBooleanOrNull(name: String): Boolean? =
 
 private fun JSONObject.optStringOrNull(name: String): String? =
     if (has(name) && !isNull(name)) optString(name) else null
+
+private fun JSONArray?.toStringList(): List<String> {
+    if (this == null) return emptyList()
+    return (0 until length()).mapNotNull { index ->
+        if (isNull(index)) null else optString(index, null)?.takeIf { it.isNotEmpty() }
+    }
+}

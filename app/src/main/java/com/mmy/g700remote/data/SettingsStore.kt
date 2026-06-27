@@ -1,11 +1,21 @@
 package com.mmy.g700remote.data
 
 import com.mmy.g700remote.ble.ConnectionPreference
+import com.mmy.g700remote.cloud.BoundCar
+import com.mmy.g700remote.cloud.CloudAccount
 
 interface SettingsStore {
     fun getPairedDevice(): PairedDevice?
     fun savePairedDevice(device: PairedDevice)
     fun clearPairedDevice()
+    fun getCloudAccount(): CloudAccount?
+    fun saveCloudAccount(account: CloudAccount)
+    fun clearCloudAccount()
+    fun getBoundCar(): BoundCar?
+    fun saveBoundCar(car: BoundCar)
+    fun clearBoundCar()
+    fun isCloudEnabled(): Boolean
+    fun setCloudEnabled(enabled: Boolean)
     fun getPairingCode(): String
     fun setPairingCode(code: String)
     fun isBleEnabled(): Boolean

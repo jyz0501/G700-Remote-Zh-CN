@@ -13,6 +13,8 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import com.mmy.g700remote.ble.ConnectionPreference
 import com.mmy.g700remote.ble.TransportKind
+import com.mmy.g700remote.cloud.BoundCar
+import com.mmy.g700remote.cloud.CloudAccount
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -46,6 +48,72 @@ class SecureSettingsStore(context: Context) : SettingsStore {
 
     override fun clearPairedDevice() {
         prefs.edit().remove(KEY_PAIRED_DEVICE).apply()
+    }
+
+    override fun getCloudAccount(): CloudAccount? {
+        val json = getEncryptedString(KEY_CLOUD_ACCOUNT) ?: return null
+        return runCatching {
+            val obj = JSONObject(json)
+            val token = obj.optString("token")
+            if (token.isBlank()) return null
+            CloudAccount(
+                userId = obj.optString("userId"),
+                email = obj.optString("email"),
+                token = token,
+            )
+        }.getOrNull()
+    }
+
+    override fun saveCloudAccount(account: CloudAccount) {
+        val json = JSONObject()
+            .put("userId", account.userId)
+            .put("email", account.email)
+            .put("token", account.token)
+            .toString()
+        putEncryptedString(KEY_CLOUD_ACCOUNT, json)
+    }
+
+    override fun clearCloudAccount() {
+        prefs.edit().remove(KEY_CLOUD_ACCOUNT).apply()
+    }
+
+    override fun getBoundCar(): BoundCar? {
+        val json = getEncryptedString(KEY_BOUND_CAR) ?: return null
+        return runCatching {
+            val obj = JSONObject(json)
+            val carId = obj.optString("carId")
+            if (carId.isBlank()) return null
+            BoundCar(
+                carId = carId,
+                apiBase = obj.optString("apiBase"),
+                relayBase = obj.optString("relayBase"),
+                pairingCode = obj.optString("pairingCode"),
+                name = obj.optString("name").ifBlank { null },
+                boundAtMillis = obj.optLong("boundAtMillis").takeIf { it > 0L } ?: System.currentTimeMillis(),
+            )
+        }.getOrNull()
+    }
+
+    override fun saveBoundCar(car: BoundCar) {
+        val json = JSONObject()
+            .put("carId", car.carId)
+            .put("apiBase", car.apiBase)
+            .put("relayBase", car.relayBase)
+            .put("pairingCode", car.pairingCode)
+            .put("name", car.name)
+            .put("boundAtMillis", car.boundAtMillis)
+            .toString()
+        putEncryptedString(KEY_BOUND_CAR, json)
+    }
+
+    override fun clearBoundCar() {
+        prefs.edit().remove(KEY_BOUND_CAR).apply()
+    }
+
+    override fun isCloudEnabled(): Boolean = prefs.getBoolean(KEY_CLOUD_ENABLED, true)
+
+    override fun setCloudEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_CLOUD_ENABLED, enabled).apply()
     }
 
     override fun getPairingCode(): String = getEncryptedString(KEY_PAIRING_CODE).orEmpty()
@@ -339,6 +407,9 @@ class SecureSettingsStore(context: Context) : SettingsStore {
         private const val PAIRING_CODE_MAX_LEN = 8
         private const val KEY_PAIRED_DEVICE = "paired_device"
         private const val KEY_PAIRING_CODE = "pairing_code"
+        private const val KEY_CLOUD_ACCOUNT = "cloud_account"
+        private const val KEY_BOUND_CAR = "bound_car"
+        private const val KEY_CLOUD_ENABLED = "cloud_enabled"
         private const val KEY_BLE_ENABLED = "ble_enabled"
         private const val KEY_LAN_ENABLED = "lan_enabled"
         private const val KEY_CONNECTION_PREFERENCE = "connection_preference"

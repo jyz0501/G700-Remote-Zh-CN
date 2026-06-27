@@ -125,6 +125,11 @@ class FakeDisplayMirrorTransport : DisplayMirrorTransport {
                 app = "geo",
                 raw = """{"type":"navigate","status":"ok","app":"geo"}""",
             )
+            RemoteCommand.Cameras -> RemoteResponse.CameraList(
+                cameras = listOf("0", "1"),
+                raw = """{"type":"cameraList","cameras":["0","1"]}""",
+            )
+            else -> status()
         }
         _incoming.emit(response)
         return response

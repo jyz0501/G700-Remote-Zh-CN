@@ -9,9 +9,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas as AndroidCanvas
 import android.graphics.Paint
 import android.graphics.RectF
+import android.util.Base64 as AndroidBase64
 import android.location.Location
 import android.location.LocationManager
 import android.net.Uri
@@ -19,6 +21,8 @@ import android.os.CancellationSignal
 import android.view.MotionEvent
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
@@ -31,8 +35,15 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ExperimentalGetImage
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.Preview as CameraPreview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -46,6 +57,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -57,18 +69,37 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.AcUnit
 import androidx.compose.material.icons.outlined.Air
 import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Bedtime
 import androidx.compose.material.icons.outlined.Bluetooth
 import androidx.compose.material.icons.outlined.BluetoothSearching
 import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.CameraAlt
+import androidx.compose.material.icons.outlined.Favorite
+import androidx.compose.material.icons.outlined.GraphicEq
+import androidx.compose.material.icons.outlined.Hotel
+import androidx.compose.material.icons.outlined.LocalCarWash
+import androidx.compose.material.icons.outlined.Logout
+import androidx.compose.material.icons.outlined.Movie
+import androidx.compose.material.icons.outlined.Pets
+import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material.icons.outlined.QrCodeScanner
+import androidx.compose.material.icons.outlined.Sensors
+import androidx.compose.material.icons.outlined.Shield
+import androidx.compose.material.icons.outlined.Stop
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Delete
@@ -126,6 +157,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -137,6 +169,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -147,9 +182,11 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.text.KeyboardOptions
@@ -184,6 +221,13 @@ import com.mmy.g700remote.G700RemoteViewModel
 import com.mmy.g700remote.analytics.G700Analytics
 import com.mmy.g700remote.ble.RemoteConnectionState
 import com.mmy.g700remote.ble.TransportKind
+import com.mmy.g700remote.cloud.CloudResult
+import com.mmy.g700remote.cloud.QrPairingPayload
+import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.barcode.BarcodeScannerOptions
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.common.InputImage
+import java.util.concurrent.Executors
 import com.mmy.g700remote.data.AppColorMode
 import com.mmy.g700remote.data.AppIconTheme
 import com.mmy.g700remote.data.AppLanguage
@@ -199,8 +243,11 @@ import com.mmy.g700remote.data.NavigationHistoryEntry
 import com.mmy.g700remote.data.NavigationShareResult
 import com.mmy.g700remote.data.PairedDevice
 import com.mmy.g700remote.data.RemoteUiState
+import com.mmy.g700remote.data.SentinelAlertUi
 import com.mmy.g700remote.data.UpdateGateReason
 import com.mmy.g700remote.data.VehicleTelemetry
+import com.mmy.g700remote.protocol.AudioSetAction
+import com.mmy.g700remote.protocol.CabinCoolingAction
 import com.mmy.g700remote.protocol.ClimateAction
 import com.mmy.g700remote.protocol.MirrorAction
 import com.mmy.g700remote.protocol.NavigationShareParser
@@ -209,7 +256,9 @@ import com.mmy.g700remote.protocol.OpenCloseAction
 import com.mmy.g700remote.protocol.ParkingChargeAction
 import com.mmy.g700remote.protocol.RaceChargeAction
 import com.mmy.g700remote.protocol.RemoteCommand
+import com.mmy.g700remote.protocol.SceneKind
 import com.mmy.g700remote.protocol.SeatPosition
+import com.mmy.g700remote.protocol.StartStopAction
 import com.mmy.g700remote.protocol.WindowAction
 import com.mmy.g700remote.security.LocalAuthGate
 import com.mmy.g700remote.ui.theme.G700RemoteTheme
@@ -279,9 +328,19 @@ fun G700RemoteApp(
     var showStandaloneHistory by rememberSaveable { mutableStateOf(false) }
     var wasRecentlyConnected by remember { mutableStateOf(false) }
     var showReleaseNotes by rememberSaveable { mutableStateOf(false) }
+    var skipAccount by rememberSaveable { mutableStateOf(false) }
+    var showQrScanner by rememberSaveable { mutableStateOf(false) }
 
     fun showUserNotice(message: String) {
         scope.launch { snackbarHostState.showSnackbar(translate(language, message)) }
+    }
+
+    suspend fun bindQr(rawQr: String): CloudResult<Unit> {
+        val result = viewModel.bindCarFromQr(rawQr)
+        if (result is CloudResult.Success) {
+            showQrScanner = false
+        }
+        return result
     }
 
     fun submit(command: RemoteCommand) {
@@ -550,6 +609,20 @@ fun G700RemoteApp(
                 onDownloadUpdate = { viewModel.downloadAndInstallUpdate(activity, it) },
                 modifier = Modifier.padding(padding),
             )
+        } else if (showQrScanner) {
+            QrScanScreen(
+                onQrBound = ::bindQr,
+                onCancel = { showQrScanner = false },
+                onUserNotice = ::showUserNotice,
+                modifier = Modifier.padding(padding),
+            )
+        } else if (state.cloudEnabled && !state.isSignedIn && !skipAccount && !demoMode && state.pairedDevice == null) {
+            LoginScreen(
+                state = state,
+                onLogin = { email, password -> viewModel.login(email, password) },
+                onUseWithoutAccount = { skipAccount = true },
+                modifier = Modifier.padding(padding),
+            )
         } else if (showStandaloneHistory && !demoMode && state.pairedDevice == null) {
             NavigationHistoryScreen(
                 state = state,
@@ -596,6 +669,10 @@ fun G700RemoteApp(
                 onDeleteNavigationHistory = viewModel::deleteNavigationHistory,
                 onDemoModeChanged = { enabled -> demoMode = enabled },
                 onUserNotice = ::showUserNotice,
+                onClearSentinelAlerts = {},
+                onSignOut = {},
+                onCloudEnabledChanged = {},
+                onRescanQr = {},
                 showUpdates = showUpdates,
                 onUpdatesShown = onUpdatesShown,
                 requestedTab = requestedTab,
@@ -612,6 +689,11 @@ fun G700RemoteApp(
                 onPairingCodeChanged = viewModel::setPairingCode,
                 onRequestPermissions = onRequestPermissions,
                 onStartDemo = { demoMode = true },
+                onScanQr = if (state.isSignedIn) {
+                    { showQrScanner = true }
+                } else {
+                    null
+                },
                 modifier = Modifier.padding(padding),
             )
         } else if (!permissionsGranted) {
@@ -658,6 +740,10 @@ fun G700RemoteApp(
                     demoMode = enabled
                 },
                 onUserNotice = ::showUserNotice,
+                onClearSentinelAlerts = viewModel::clearSentinelAlerts,
+                onSignOut = viewModel::signOut,
+                onCloudEnabledChanged = viewModel::setCloudEnabled,
+                onRescanQr = { showQrScanner = true },
                 showUpdates = showUpdates,
                 onUpdatesShown = onUpdatesShown,
                 requestedTab = requestedTab,
@@ -932,6 +1018,7 @@ private fun PairingScreen(
     onPairingCodeChanged: (String) -> Unit,
     onRequestPermissions: () -> Unit,
     onStartDemo: () -> Unit,
+    onScanQr: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val uriHandler = LocalUriHandler.current
@@ -948,6 +1035,29 @@ private fun PairingScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+        if (onScanQr != null) {
+            item {
+                Section(tr("Connect your car")) {
+                    Text(
+                        tr("Scan the QR code shown on your car's DisplayMirror screen to pair instantly."),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Button(onClick = onScanQr, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Outlined.QrCodeScanner, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(tr("Scan QR code"))
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        tr("Or pair locally over Bluetooth or Wi-Fi below."),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
         item {
             Section(tr("Setup requirements")) {
@@ -1148,6 +1258,10 @@ private fun MainRemoteScaffold(
     onDeleteNavigationHistory: (Long) -> Unit,
     onDemoModeChanged: (Boolean) -> Unit,
     onUserNotice: (String) -> Unit,
+    onClearSentinelAlerts: () -> Unit,
+    onSignOut: () -> Unit,
+    onCloudEnabledChanged: (Boolean) -> Unit,
+    onRescanQr: () -> Unit,
     showUpdates: Boolean,
     onUpdatesShown: () -> Unit,
     requestedTab: AppTab?,
@@ -1207,9 +1321,9 @@ private fun MainRemoteScaffold(
                     modifier = screenModifier,
                 )
                 AppTab.Climate -> ClimateScreen(state, onCommand, onUserNotice, screenModifier)
-                AppTab.Openings -> OpeningsScreen(state, onCommand, screenModifier)
+                AppTab.Controls -> ControlsScreen(state, onCommand, screenModifier)
+                AppTab.Camera -> CameraScreen(state, onCommand, onClearSentinelAlerts, screenModifier)
                 AppTab.Charging -> ChargingScreen(state, onCommand, screenModifier)
-                AppTab.Lighting -> LightingScreen(state, onCommand, screenModifier)
                 AppTab.VehicleMap -> VehicleMapScreen(
                     state = state,
                     modifier = screenModifier,
@@ -1248,6 +1362,9 @@ private fun MainRemoteScaffold(
                     onShareLog = onShareLog,
                     onDisconnect = onDisconnect,
                     onDemoModeChanged = onDemoModeChanged,
+                    onSignOut = onSignOut,
+                    onRescanQr = onRescanQr,
+                    onCloudEnabledChanged = onCloudEnabledChanged,
                     modifier = screenModifier,
                 )
             }
@@ -1992,6 +2109,12 @@ private fun ClimateScreen(
     val ready = state.connectionState is RemoteConnectionState.Ready
     val telemetry = state.telemetry
     val airOn = telemetry.fanSpeed?.let { it > 0 }
+    LaunchedEffect(ready) {
+        if (ready) {
+            onCommand(RemoteCommand.Audio)
+            onCommand(RemoteCommand.CabinCooling(CabinCoolingAction.Status))
+        }
+    }
     LazyColumn(
         modifier = modifier,
         contentPadding = PaddingValues(20.dp),
@@ -2002,11 +2125,11 @@ private fun ClimateScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     ModeToggleBox(
                         spec = ToggleSpec(
-                            label = tr("Air conditioner"),
+                            label = tr("HVAC"),
                             icon = Icons.Outlined.AcUnit,
                             checked = airOn,
-                            onOn = { requestCabinAirToggle(state, onCommand, onUserNotice) },
-                            onOff = { requestCabinAirToggle(state, onCommand, onUserNotice) },
+                            onOn = { onCommand(RemoteCommand.Climate(ClimateAction.HvacOn)) },
+                            onOff = { onCommand(RemoteCommand.Climate(ClimateAction.HvacOff)) },
                         ),
                         enabled = ready,
                         modifier = Modifier.weight(2f),
@@ -2116,22 +2239,189 @@ private fun ClimateScreen(
                 )
             }
         }
+        item {
+            Section(tr("Cabin cooling")) {
+                val cooling = state.cabinCooling
+                ModeToggleGrid(
+                    toggles = listOf(
+                        ToggleSpec(
+                            label = tr("Scheduled cooling"),
+                            icon = Icons.Outlined.AcUnit,
+                            checked = cooling?.enabled,
+                            onOn = { onCommand(RemoteCommand.CabinCooling(CabinCoolingAction.Enable)) },
+                            onOff = { onCommand(RemoteCommand.CabinCooling(CabinCoolingAction.Disable)) },
+                        ),
+                    ),
+                    enabled = ready,
+                    columns = 1,
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedButton(
+                    onClick = { onCommand(RemoteCommand.CabinCooling(CabinCoolingAction.TriggerNow)) },
+                    enabled = ready,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Outlined.AcUnit, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(tr("Cool the cabin now"))
+                }
+                if (cooling != null) {
+                    Spacer(Modifier.height(10.dp))
+                    cooling.state?.let { MetricRow(tr("State"), it) }
+                    cooling.targetTemp?.let { MetricRow(tr("Target"), "${it.toInt()}°C") }
+                    if (cooling.scheduleEnabled == true) {
+                        MetricRow(tr("Schedule"), cooling.scheduleTime ?: tr("On"))
+                    }
+                }
+            }
+        }
+        item {
+            Section(tr("Audio")) {
+                val audio = state.audio
+                ModeToggleGrid(
+                    toggles = listOf(
+                        ToggleSpec(
+                            label = tr("Surround"),
+                            icon = Icons.Outlined.GraphicEq,
+                            checked = audio?.surround,
+                            onOn = { onCommand(RemoteCommand.AudioSet(AudioSetAction.Surround, true)) },
+                            onOff = { onCommand(RemoteCommand.AudioSet(AudioSetAction.Surround, false)) },
+                        ),
+                        ToggleSpec(
+                            label = tr("Loudness"),
+                            icon = Icons.Outlined.GraphicEq,
+                            checked = audio?.loudness,
+                            onOn = { onCommand(RemoteCommand.AudioSet(AudioSetAction.Loudness, true)) },
+                            onOff = { onCommand(RemoteCommand.AudioSet(AudioSetAction.Loudness, false)) },
+                        ),
+                    ),
+                    enabled = ready,
+                    columns = 2,
+                )
+                if (audio != null && audio.balanceMin != null && audio.balanceMax != null) {
+                    Spacer(Modifier.height(10.dp))
+                    AudioSlider(
+                        label = tr("Balance (L–R)"),
+                        value = audio.balance ?: 0,
+                        min = audio.balanceMin,
+                        max = audio.balanceMax,
+                        enabled = ready,
+                    ) { onCommand(RemoteCommand.AudioSet(AudioSetAction.Balance, it)) }
+                }
+                if (audio != null && audio.fadeMin != null && audio.fadeMax != null) {
+                    Spacer(Modifier.height(6.dp))
+                    AudioSlider(
+                        label = tr("Fade (F–R)"),
+                        value = audio.fade ?: 0,
+                        min = audio.fadeMin,
+                        max = audio.fadeMax,
+                        enabled = ready,
+                    ) { onCommand(RemoteCommand.AudioSet(AudioSetAction.Fade, it)) }
+                }
+            }
+        }
     }
 }
 
 @Composable
-private fun OpeningsScreen(
+private fun AudioSlider(
+    label: String,
+    value: Int,
+    min: Int,
+    max: Int,
+    enabled: Boolean,
+    onValueChangeFinished: (Int) -> Unit,
+) {
+    var current by remember(value) { mutableFloatStateOf(value.toFloat()) }
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("${current.toInt()}", fontWeight = FontWeight.SemiBold)
+    }
+    Slider(
+        value = current,
+        onValueChange = { current = it },
+        valueRange = min.toFloat()..max.toFloat(),
+        enabled = enabled,
+        onValueChangeFinished = { onValueChangeFinished(current.toInt()) },
+    )
+}
+
+@Composable
+private fun ControlsScreen(
     state: RemoteUiState,
     onCommand: (RemoteCommand) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val ready = state.connectionState is RemoteConnectionState.Ready
+    val airOn = state.telemetry.fanSpeed?.let { it > 0 }
     Column(
         modifier = modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(9.dp),
     ) {
+        CompactSection(tr("Climate")) {
+            ModeToggleGrid(
+                toggles = listOf(
+                    ToggleSpec(
+                        label = tr("HVAC"),
+                        icon = Icons.Outlined.AcUnit,
+                        checked = airOn,
+                        onOn = { onCommand(RemoteCommand.Climate(ClimateAction.HvacOn)) },
+                        onOff = { onCommand(RemoteCommand.Climate(ClimateAction.HvacOff)) },
+                    ),
+                    ToggleSpec(
+                        label = tr("A/C"),
+                        icon = Icons.Outlined.AcUnit,
+                        checked = state.telemetry.acOn,
+                        onOn = { onCommand(RemoteCommand.Climate(ClimateAction.AcOn)) },
+                        onOff = { onCommand(RemoteCommand.Climate(ClimateAction.AcOff)) },
+                    ),
+                ),
+                enabled = ready,
+                columns = 2,
+            )
+        }
+        CompactSection(tr("Lighting")) {
+            ModeToggleGrid(
+                toggles = listOf(
+                    ToggleSpec(
+                        label = tr("Hazards"),
+                        icon = Icons.Outlined.Warning,
+                        checked = state.telemetry.hazardsOn,
+                        onOn = { onCommand(RemoteCommand.Hazards(OnOffAction.On)) },
+                        onOff = { onCommand(RemoteCommand.Hazards(OnOffAction.Off)) },
+                    ),
+                    ToggleSpec(
+                        label = tr("Daytime Running Lights"),
+                        icon = Icons.Outlined.Lightbulb,
+                        checked = state.telemetry.drlOn,
+                        onOn = { onCommand(RemoteCommand.Drl(OnOffAction.On)) },
+                        onOff = { onCommand(RemoteCommand.Drl(OnOffAction.Off)) },
+                    ),
+                ),
+                enabled = ready,
+                columns = 2,
+            )
+        }
+        CompactSection(tr("Scenes")) {
+            ActionBoxGrid(
+                actions = listOf(
+                    ActionSpec(tr("Cinema"), Icons.Outlined.Movie) { onCommand(RemoteCommand.Scene(SceneKind.Cinema)) },
+                    ActionSpec(tr("Big Bed"), Icons.Outlined.Hotel) { onCommand(RemoteCommand.Scene(SceneKind.BigBed)) },
+                    ActionSpec(tr("Pet Mode"), Icons.Outlined.Pets) { onCommand(RemoteCommand.Scene(SceneKind.Pet)) },
+                    ActionSpec(tr("Resting"), Icons.Outlined.Bedtime) { onCommand(RemoteCommand.Scene(SceneKind.Resting)) },
+                    ActionSpec(tr("Romance"), Icons.Outlined.Favorite) { onCommand(RemoteCommand.Scene(SceneKind.Romance)) },
+                    ActionSpec(tr("Light Show"), Icons.Outlined.Lightbulb) { onCommand(RemoteCommand.Scene(SceneKind.LightShow)) },
+                    ActionSpec(tr("Car Wash"), Icons.Outlined.LocalCarWash) { onCommand(RemoteCommand.Scene(SceneKind.CarWash)) },
+                    ActionSpec(tr("Rescue"), Icons.Outlined.Shield) { onCommand(RemoteCommand.Scene(SceneKind.Rescue)) },
+                ),
+                enabled = ready,
+                columns = 2,
+                itemHeight = 48.dp,
+            )
+        }
         CompactSection(tr("Windows")) {
             ActionBoxGrid(
                 actions = listOf(
@@ -2306,42 +2596,422 @@ private fun ChargingScreen(
     }
 }
 
+private fun decodeBase64Image(data: String?): ImageBitmap? {
+    if (data.isNullOrBlank()) return null
+    return runCatching {
+        val bytes = AndroidBase64.decode(data, AndroidBase64.DEFAULT)
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+    }.getOrNull()
+}
+
 @Composable
-private fun LightingScreen(
+private fun CameraScreen(
     state: RemoteUiState,
     onCommand: (RemoteCommand) -> Unit,
+    onClearSentinelAlerts: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val ready = state.connectionState is RemoteConnectionState.Ready
-    Column(
-        modifier = modifier
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp),
+    val cam = state.camera
+    val activeTransport = (state.connectionState as? RemoteConnectionState.Ready)?.transport
+    LaunchedEffect(ready) {
+        if (ready && cam.cameraIds.isEmpty()) onCommand(RemoteCommand.Cameras)
+    }
+    var selectedCamera by remember(cam.cameraIds) {
+        mutableStateOf(cam.selectedCameraId ?: cam.cameraIds.firstOrNull())
+    }
+    val frame = if (cam.liveViewActive) cam.liveFrame ?: cam.snapshot else cam.snapshot
+    val image = remember(frame?.dataBase64) { decodeBase64Image(frame?.dataBase64) }
+
+    LazyColumn(
+        modifier = modifier,
+        contentPadding = PaddingValues(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Section(tr("Lighting")) {
-            ModeToggleGrid(
-                toggles = listOf(
-                    ToggleSpec(
-                        label = tr("Hazards"),
-                        icon = Icons.Outlined.Warning,
-                        checked = state.telemetry.hazardsOn,
-                        onOn = { onCommand(RemoteCommand.Hazards(OnOffAction.On)) },
-                        onOff = { onCommand(RemoteCommand.Hazards(OnOffAction.Off)) },
+        item {
+            Section(tr("Car camera")) {
+                if (cam.cameraIds.isEmpty()) {
+                    Text(
+                        if (ready) tr("No cameras reported by the car yet.")
+                        else tr("Connect to your car to view cameras."),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedButton(onClick = { onCommand(RemoteCommand.Cameras) }, enabled = ready) {
+                        Text(tr("Refresh cameras"))
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        cam.cameraIds.forEachIndexed { index, id ->
+                            FilterChip(
+                                selected = id == selectedCamera,
+                                onClick = { selectedCamera = id },
+                                label = { Text("${tr("Camera")} ${index + 1}") },
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(16f / 9f)
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(Color.Black),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (image != null) {
+                            Image(
+                                bitmap = image,
+                                contentDescription = tr("Camera image"),
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Fit,
+                            )
+                        } else if (cam.loadingSnapshot) {
+                            CircularProgressIndicator(color = Color.White)
+                        } else {
+                            Icon(
+                                Icons.Outlined.PhotoCamera,
+                                contentDescription = null,
+                                tint = Color.White.copy(alpha = 0.5f),
+                                modifier = Modifier.size(48.dp),
+                            )
+                        }
+                        if (cam.liveViewActive) {
+                            Surface(
+                                color = Color.Red.copy(alpha = 0.85f),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
+                            ) {
+                                Text(
+                                    " ${tr("LIVE")} ",
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                )
+                            }
+                        }
+                    }
+                    cam.lastCameraError?.let {
+                        Spacer(Modifier.height(8.dp))
+                        Text(tr("Camera error: ") + it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                        Button(
+                            onClick = {
+                                selectedCamera?.let {
+                                    onCommand(RemoteCommand.Snapshot(camera = it, requestId = "snap-${System.currentTimeMillis()}"))
+                                }
+                            },
+                            enabled = ready && selectedCamera != null,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Icon(Icons.Outlined.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(tr("Snapshot"))
+                        }
+                        if (cam.liveViewActive) {
+                            OutlinedButton(
+                                onClick = { onCommand(RemoteCommand.LiveView(StartStopAction.Stop)) },
+                                enabled = ready,
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Icon(Icons.Outlined.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(tr("Stop live"))
+                            }
+                        } else {
+                            OutlinedButton(
+                                onClick = {
+                                    selectedCamera?.let { onCommand(RemoteCommand.LiveView(StartStopAction.Start, it)) }
+                                },
+                                enabled = ready && selectedCamera != null,
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Icon(Icons.Outlined.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(tr("Live view"))
+                            }
+                        }
+                    }
+                    if (activeTransport == TransportKind.Cloud) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            tr("Live view streams best on the same Wi-Fi as the car. Over the cloud, use Snapshot."),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+        item {
+            Section(tr("Sentinel mode")) {
+                ModeToggleGrid(
+                    toggles = listOf(
+                        ToggleSpec(
+                            label = tr("Watch my car"),
+                            icon = Icons.Outlined.Shield,
+                            checked = cam.sentinelArmed,
+                            onOn = { onCommand(RemoteCommand.Sentinel(StartStopAction.Start)) },
+                            onOff = { onCommand(RemoteCommand.Sentinel(StartStopAction.Stop)) },
+                        ),
                     ),
-                    ToggleSpec(
-                        label = tr("Daytime Running Lights"),
-                        icon = Icons.Outlined.Lightbulb,
-                        checked = state.telemetry.drlOn,
-                        onOn = { onCommand(RemoteCommand.Drl(OnOffAction.On)) },
-                        onOff = { onCommand(RemoteCommand.Drl(OnOffAction.Off)) },
-                    ),
-                ),
-                enabled = ready,
-                columns = 1,
-            )
+                    enabled = ready,
+                    columns = 1,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    tr("Alerts arrive while the app is connected to the car."),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (cam.sentinelAlerts.isNotEmpty()) {
+                    Spacer(Modifier.height(10.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Text(tr("Recent alerts"), fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        TextButton(onClick = onClearSentinelAlerts) { Text(tr("Clear")) }
+                    }
+                    cam.sentinelAlerts.take(8).forEach { alert ->
+                        SentinelAlertRow(alert)
+                    }
+                }
+            }
         }
     }
+}
+
+@Composable
+private fun SentinelAlertRow(alert: SentinelAlertUi) {
+    val thumb = remember(alert.thumbBase64) { decodeBase64Image(alert.thumbBase64) }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Box(
+            modifier = Modifier.size(56.dp).clip(RoundedCornerShape(10.dp)).background(Color.Black),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (thumb != null) {
+                Image(bitmap = thumb, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            } else {
+                Icon(Icons.Outlined.Sensors, contentDescription = null, tint = Color.White.copy(alpha = 0.6f))
+            }
+        }
+        Column(Modifier.weight(1f)) {
+            Text(alert.eventName ?: tr("Sentinel event"), fontWeight = FontWeight.Medium)
+            alert.time?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+    }
+}
+
+@Composable
+private fun LoginScreen(
+    state: RemoteUiState,
+    onLogin: suspend (String, String) -> CloudResult<Unit>,
+    onUseWithoutAccount: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var email by rememberSaveable { mutableStateOf("") }
+    var password by rememberSaveable { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp, vertical = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Spacer(Modifier.height(20.dp))
+        Icon(Icons.Outlined.Cloud, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp))
+        Text(tr("Sign in"), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text(
+            tr("Use the DisplayMirror account you created on your car's head unit."),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = email,
+            onValueChange = { email = it; error = null },
+            label = { Text(tr("Email")) },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it; error = null },
+            label = { Text(tr("Password")) },
+            singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        (error ?: state.cloudNotice)?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        }
+        Button(
+            onClick = {
+                error = null
+                scope.launch {
+                    val result = onLogin(email.trim(), password)
+                    if (result is CloudResult.Failure) error = result.message
+                }
+            },
+            enabled = !state.cloudBusy && email.isNotBlank() && password.isNotBlank(),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            if (state.cloudBusy) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+            } else {
+                Text(tr("Sign in"))
+            }
+        }
+        Text(
+            tr("New here? Create your account on the car's DisplayMirror screen, then sign in."),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+        TextButton(onClick = onUseWithoutAccount) {
+            Text(tr("Use without an account (local only)"))
+        }
+    }
+}
+
+@Composable
+private fun QrScanScreen(
+    onQrBound: suspend (String) -> CloudResult<Unit>,
+    onCancel: () -> Unit,
+    onUserNotice: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    var hasCameraPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED,
+        )
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted -> hasCameraPermission = granted }
+    LaunchedEffect(Unit) {
+        if (!hasCameraPermission) permissionLauncher.launch(Manifest.permission.CAMERA)
+    }
+    var handled by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
+        if (hasCameraPermission) {
+            CameraQrPreview(
+                onQr = { raw ->
+                    if (!handled && QrPairingPayload.parse(raw) != null) {
+                        handled = true
+                        scope.launch {
+                            when (val result = onQrBound(raw)) {
+                                is CloudResult.Failure -> {
+                                    handled = false
+                                    onUserNotice(result.message)
+                                }
+                                is CloudResult.Success -> Unit
+                            }
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(240.dp)
+                    .border(3.dp, Color.White.copy(alpha = 0.9f), RoundedCornerShape(24.dp)),
+            )
+            Text(
+                tr("Point the camera at the QR code on your car's DisplayMirror screen"),
+                color = Color.White,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(32.dp),
+            )
+        } else {
+            Column(
+                modifier = Modifier.align(Alignment.Center).padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Icon(Icons.Outlined.QrCodeScanner, contentDescription = null, tint = Color.White, modifier = Modifier.size(48.dp))
+                Text(tr("Camera permission is needed to scan the QR code."), color = Color.White, textAlign = TextAlign.Center)
+                Button(onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }) {
+                    Text(tr("Grant camera access"))
+                }
+            }
+        }
+        IconButton(
+            onClick = onCancel,
+            modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
+        ) {
+            Icon(Icons.Outlined.Close, contentDescription = tr("Cancel"), tint = Color.White)
+        }
+    }
+}
+
+@OptIn(ExperimentalGetImage::class)
+@Composable
+private fun CameraQrPreview(
+    onQr: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    AndroidView(
+        modifier = modifier,
+        factory = { ctx ->
+            val previewView = PreviewView(ctx)
+            val executor = Executors.newSingleThreadExecutor()
+            val scanner = BarcodeScanning.getClient(
+                BarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build(),
+            )
+            val providerFuture = ProcessCameraProvider.getInstance(ctx)
+            providerFuture.addListener({
+                val provider = providerFuture.get()
+                val preview = CameraPreview.Builder().build().also {
+                    it.setSurfaceProvider(previewView.surfaceProvider)
+                }
+                val analysis = ImageAnalysis.Builder()
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .build()
+                analysis.setAnalyzer(executor) { proxy ->
+                    val mediaImage = proxy.image
+                    if (mediaImage != null) {
+                        val input = InputImage.fromMediaImage(mediaImage, proxy.imageInfo.rotationDegrees)
+                        scanner.process(input)
+                            .addOnSuccessListener { barcodes ->
+                                barcodes.firstOrNull()?.rawValue?.let(onQr)
+                            }
+                            .addOnCompleteListener { proxy.close() }
+                    } else {
+                        proxy.close()
+                    }
+                }
+                runCatching {
+                    provider.unbindAll()
+                    provider.bindToLifecycle(
+                        lifecycleOwner,
+                        CameraSelector.DEFAULT_BACK_CAMERA,
+                        preview,
+                        analysis,
+                    )
+                }
+            }, ContextCompat.getMainExecutor(ctx))
+            previewView
+        },
+    )
 }
 
 @Composable
@@ -2545,9 +3215,29 @@ private fun SettingsScreen(
     onShareLog: () -> Unit,
     onDisconnect: () -> Unit,
     onDemoModeChanged: (Boolean) -> Unit,
+    onSignOut: () -> Unit,
+    onRescanQr: () -> Unit,
+    onCloudEnabledChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var advancedExpanded by rememberSaveable { mutableStateOf(false) }
+    var showSignOutDialog by rememberSaveable { mutableStateOf(false) }
+    if (showSignOutDialog) {
+        AlertDialog(
+            onDismissRequest = { showSignOutDialog = false },
+            title = { Text(tr("Sign out?")) },
+            text = { Text(tr("You'll need to sign in again to use cloud control and sync.")) },
+            confirmButton = {
+                Button(onClick = {
+                    showSignOutDialog = false
+                    onSignOut()
+                }) { Text(tr("Sign out")) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSignOutDialog = false }) { Text(tr("Cancel")) }
+            },
+        )
+    }
     var showClearPairingDialog by rememberSaveable { mutableStateOf(false) }
     if (showClearPairingDialog) {
         AlertDialog(
@@ -2595,6 +3285,57 @@ private fun SettingsScreen(
         contentPadding = PaddingValues(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
+        item {
+            Section(tr("Account")) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Outlined.AccountCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            state.accountEmail ?: tr("Not signed in"),
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            state.boundCar?.let { "${tr("Car")}: ${it.name ?: it.carId}" }
+                                ?: tr("No cloud car linked"),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                ProtocolSwitchRow(
+                    title = tr("Cloud control"),
+                    subtitle = tr("Control your car from anywhere over the DisplayMirror cloud."),
+                    checked = state.cloudEnabled,
+                    icon = Icons.Outlined.Cloud,
+                    onCheckedChange = onCloudEnabledChanged,
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedButton(
+                    onClick = onRescanQr,
+                    enabled = state.isSignedIn,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(22.dp),
+                ) {
+                    Icon(Icons.Outlined.QrCodeScanner, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (state.boundCar != null) tr("Re-scan car QR code") else tr("Scan car QR code"))
+                }
+                if (state.isSignedIn) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { showSignOutDialog = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(22.dp),
+                    ) {
+                        Icon(Icons.Outlined.Logout, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(tr("Sign out"))
+                    }
+                }
+            }
+        }
         item {
             Section(tr("Connectivity")) {
                 Button(
@@ -4783,9 +5524,9 @@ private fun MappingChip(
 private enum class AppTab(val label: String, val icon: ImageVector, val showInBottomBar: Boolean = true) {
     Home("Home", Icons.Outlined.DirectionsCar),
     Climate("Climate", Icons.Outlined.Thermostat),
-    Openings("Windows", Icons.Outlined.Window),
+    Controls("Controls", Icons.Outlined.Tune),
+    Camera("Camera", Icons.Outlined.Videocam),
     Charging("Charge", Icons.Outlined.Bolt),
-    Lighting("Lights", Icons.Outlined.Lightbulb),
     NavigationHistory("Links", Icons.Outlined.Link, showInBottomBar = false),
     VehicleMap("Vehicle map", Icons.Outlined.DirectionsCar, showInBottomBar = false),
     Settings("Settings", Icons.Outlined.Settings, showInBottomBar = false),
@@ -4837,13 +5578,18 @@ private fun lastRefreshStatusLine(state: RemoteUiState): String {
 private fun RemoteUiState.headerTransportIcon(): ImageVector {
     val activeTransport = (connectionState as? RemoteConnectionState.Ready)?.transport
     val transport = activeTransport ?: pairedDevice?.transport
-    return if (transport == TransportKind.Lan) Icons.Outlined.Wifi else Icons.Outlined.Bluetooth
+    return when (transport) {
+        TransportKind.Lan -> Icons.Outlined.Wifi
+        TransportKind.Cloud -> Icons.Outlined.Cloud
+        else -> Icons.Outlined.Bluetooth
+    }
 }
 
 @Composable
 private fun TransportKind.label(): String = when (this) {
     TransportKind.Ble -> tr("BLE")
     TransportKind.Lan -> tr("LAN")
+    TransportKind.Cloud -> tr("Cloud")
 }
 
 private fun AppTheme.label(): String = when (this) {
@@ -5061,27 +5807,31 @@ private fun releaseNotes(language: AppLanguage): ReleaseNotesCopy =
     if (language == AppLanguage.Arabic) {
         ReleaseNotesCopy(
             title = "ما الجديد في الإصدار ${BuildConfig.VERSION_NAME}",
-            intro = "تحسينات هذا الإصدار تركز على الصفحة الرئيسية، موقع السيارة، ومزامنة الحالة بسلاسة أكبر.",
+            intro = "تحديث كبير يضيف حساب DisplayMirror السحابي والتحكم عن بُعد والكاميرا.",
             items = listOf(
-                "الصفحة الرئيسية أصبحت أنظف مع معلومات السيارة حول زر القفل وخريطة تفاعلية لموقع السيارة.",
-                "الخريطة تعرض موقع السيارة وموقع الهاتف عند توفره، مع وضع داكن وتفاصيل عنوان أوضح.",
-                "شاشة الخريطة الأكبر تعرض المصدر بشكل أنيق، وتوفر فتح الموقع، بدء الملاحة، ونسخ الإحداثيات.",
-                "السحب للتحديث أصبح محصوراً في الجزء المناسب حتى لا يتعارض مع تحريك الخريطة.",
-                "إشعارات التحديث يمكنها الآن تشغيل فحص تحديث مباشر عند وصول تنبيه مهم من Firebase.",
-                "تحسينات في حركة الانتقال للخريطة، محاذاة أيقونة التطبيق، وإصلاحات بسيطة للتخطيط والاستقرار.",
+                "تسجيل الدخول بحساب DisplayMirror الذي أنشأته على شاشة السيارة لمزامنة سيارتك.",
+                "اقتران فوري عبر مسح رمز QR الظاهر على شاشة DisplayMirror.",
+                "تحكم سحابي جديد للتحكم بسيارتك من أي مكان، إضافةً إلى البلوتوث والشبكة المحلية.",
+                "كاميرا السيارة: التقاط صورة فورية وبثّ مباشر عند الاتصال محلياً.",
+                "وضع المراقبة (Sentinel) مع تنبيهات وصورة مصغّرة عند رصد حركة أو اصطدام.",
+                "مشاهد جاهزة (سينما، حيوان أليف، غسيل السيارة، والمزيد) وتحكم بالصوت والتبريد المجدول.",
+                "تشغيل/إيقاف المكيّف والتكييف الكامل أصبح متاحاً الآن عن بُعد.",
+                "إعادة تنظيم الأقسام: تبويب \"تحكم\" موحّد وتبويب \"كاميرا\" جديد.",
             ),
         )
     } else {
         ReleaseNotesCopy(
             title = "What's new in ${BuildConfig.VERSION_NAME}",
-            intro = "This update focuses on the Home screen, vehicle location, and smoother status syncing.",
+            intro = "A major update adding DisplayMirror cloud accounts, remote control, and car camera.",
             items = listOf(
-                "Home is cleaner, with key vehicle information around the lock control and an interactive vehicle-location map.",
-                "The map now shows the car and your phone location when available, follows dark mode, and uses clearer address details.",
-                "The expanded map has a tidy source chip plus clear actions to open location, start navigation, or copy coordinates.",
-                "Pull to refresh is limited to the right area so it no longer fights map gestures.",
-                "Update notifications can now trigger an immediate update check from Firebase messages.",
-                "Map transitions, launcher-icon alignment, layout polish, and stability were refined.",
+                "Sign in with the DisplayMirror account you create on the car's head unit to link your car.",
+                "Instant pairing by scanning the QR code shown on the DisplayMirror screen.",
+                "New cloud control to operate your car from anywhere, alongside Bluetooth and LAN.",
+                "Car camera: take an instant snapshot, plus live view when connected locally.",
+                "Sentinel mode with alerts and a thumbnail when motion or impact is detected.",
+                "Scene presets (cinema, pet, car wash, and more), audio control, and scheduled cabin cooling.",
+                "Climate on/off now works remotely with full HVAC and A/C power control.",
+                "Reorganized sections: a unified Controls tab and a new Camera tab.",
             ),
         )
     }

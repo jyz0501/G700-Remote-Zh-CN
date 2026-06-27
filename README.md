@@ -2,19 +2,38 @@
 
 G700 Remote is a Kotlin Android companion app for Jetour G700 head units running the open-source DisplayMirror app. It connects to DisplayMirror's remote-access protocol over Bluetooth LE or LAN/mDNS and provides a focused phone remote for lock/unlock, climate, openings, lighting, charging, and vehicle telemetry that DisplayMirror exposes.
 
-This repository started from the v1.2 baseline and now tracks the v1.6.8 release. It is intended as the clean source baseline for future development, CI, Play Store preparation, and Codex-assisted changes.
+This repository started from the v1.2 baseline and now tracks the v2.0.0 release. It is intended as the clean source baseline for future development, CI, Play Store preparation, and Codex-assisted changes.
 
 ## Status
 
-- App version: `1.6.8`
+- App version: `2.0.0`
 - Android package: `com.mmy.g700remote`
-- `versionCode`: `30`
+- `versionCode`: `31`
 - Minimum Android: API 30
 - Target/compile SDK: API 36
 - UI: Jetpack Compose Material 3 with an expressive spring-motion surface system
-- Protocol: DisplayMirror remote protocol v4
-- Transports: BLE and LAN/mDNS
+- Protocol: DisplayMirror remote protocol v4 (DisplayMirror app build 3.2)
+- Transports: BLE, LAN/mDNS, and **Cloud relay** (WebSocket)
+- Account: DisplayMirror cloud sign-in (PocketBase) with QR-code car pairing
 - Languages: English and Arabic
+
+## v2.0.0 — DisplayMirror 3.x cloud release
+
+v2.0.0 brings the app up to DisplayMirror 3.2 compatibility:
+
+- **Cloud accounts** — sign in with the DisplayMirror account created on the car's head unit; account state is stored encrypted on device.
+- **QR pairing** — scan the QR code on the DisplayMirror screen to bind the car (carries the relay URL, API URL, car id, one-time pair token, and pairing code).
+- **Cloud relay transport** — a third transport (WebSocket) alongside BLE and LAN, so the car is reachable remotely. Local transports are preferred when reachable; cloud is the remote fallback.
+- **Car camera** — list cameras, capture snapshots (works over cloud), and live view (best on local Wi-Fi/BLE).
+- **Sentinel mode** — arm sentry watching and receive alerts with a thumbnail while connected.
+- **Scenes, audio, cabin cooling** — scene presets, audio balance/fade/surround/loudness, and scheduled cabin cooling.
+- **Real climate power** — DisplayMirror 3.x exposes `hvac_on/off`, so turning climate fully on/off remotely now works (previously start-only). Surfaced on Home/Controls and Climate.
+- **Reorganized navigation** — five tabs: Home, Climate, Controls (windows, sunroof, sunshade, mirrors, lighting, scenes), Camera, Charge. Login and QR live in first-time setup and Settings, not in the control tabs.
+
+The cloud backend is the DisplayMirror developer's PocketBase service. Cloud REST/relay
+specifics are centralized in `cloud/CloudConfig.kt`; the phone-leg relay handshake and the
+QR pair-redemption endpoint are reverse-engineered from the car side and may need one live
+calibration pass against a real account and car. See [docs/V3_CLOUD_UPGRADE.md](docs/V3_CLOUD_UPGRADE.md).
 - Firebase: Analytics, Crashlytics, Performance Monitoring, App Check with Play Integrity, and Cloud Messaging are wired through the app module configuration.
 
 This is not an OEM-certified digital key. It is a compatibility client for the DisplayMirror head-unit protocol and should only be used with vehicles and head units you own or are authorized to control.

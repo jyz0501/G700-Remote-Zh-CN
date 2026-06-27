@@ -17,6 +17,7 @@ data class ScannedDevice(
 enum class TransportKind {
     Ble,
     Lan,
+    Cloud,
 }
 
 enum class ConnectionPreference {
@@ -24,6 +25,9 @@ enum class ConnectionPreference {
     LanFirst,
     BleOnly,
     LanOnly,
+    CloudFirst,
+    LocalFirst,
+    CloudOnly,
 }
 
 sealed class RemoteConnectionState {

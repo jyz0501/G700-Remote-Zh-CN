@@ -17,7 +17,10 @@ import com.mmy.g700remote.data.RemoteUiState
 import com.mmy.g700remote.data.AppUpdateInfo
 import com.mmy.g700remote.data.AppUpdateState
 import com.mmy.g700remote.data.NavigationShareResult
+import com.mmy.g700remote.cloud.CloudResult
+import com.mmy.g700remote.protocol.AudioSetAction
 import com.mmy.g700remote.protocol.RemoteCommand
+import com.mmy.g700remote.protocol.SceneKind
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
@@ -109,6 +112,32 @@ class G700RemoteViewModel(application: Application) : AndroidViewModel(applicati
     }
     fun onBackground() = repository.onBackground()
     fun exportLogText(): String = repository.exportLogText()
+
+    // Cloud account + binding
+    suspend fun login(email: String, password: String): CloudResult<Unit> =
+        repository.login(email, password)
+
+    suspend fun bindCarFromQr(rawQr: String): CloudResult<Unit> =
+        repository.bindCarFromQr(rawQr)
+
+    fun signOut() = repository.signOut()
+    fun setCloudEnabled(enabled: Boolean) = repository.setCloudEnabled(enabled)
+    fun clearCloudNotice() = repository.clearCloudNotice()
+
+    // Cameras / sentinel / scenes / audio / cabin cooling
+    fun refreshCameras() = repository.refreshCameras()
+    fun selectCamera(id: String) = repository.selectCamera(id)
+    fun captureSnapshot(cameraId: String) = repository.captureSnapshot(cameraId)
+    fun startLiveView(cameraId: String) = repository.startLiveView(cameraId)
+    fun stopLiveView() = repository.stopLiveView()
+    fun setSentinelArmed(armed: Boolean) = repository.setSentinelArmed(armed)
+    fun clearSentinelAlerts() = repository.clearSentinelAlerts()
+    fun startScene(scene: SceneKind) = repository.startScene(scene)
+    fun refreshAudio() = repository.refreshAudio()
+    fun setAudio(action: AudioSetAction, value: Any) = repository.setAudio(action, value)
+    fun refreshCabinCooling() = repository.refreshCabinCooling()
+    fun setCabinCoolingEnabled(enabled: Boolean) = repository.setCabinCoolingEnabled(enabled)
+    fun triggerCabinCoolingNow() = repository.triggerCabinCoolingNow()
 
     override fun onCleared() {
         super.onCleared()

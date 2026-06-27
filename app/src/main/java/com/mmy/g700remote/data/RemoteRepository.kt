@@ -4,6 +4,12 @@ import android.content.Context
 import android.net.Uri
 import com.mmy.g700remote.analytics.G700Analytics
 import com.mmy.g700remote.ble.DisplayMirrorTransport
+import com.mmy.g700remote.cloud.BoundCar
+import com.mmy.g700remote.cloud.CloudClient
+import com.mmy.g700remote.cloud.CloudResult
+import com.mmy.g700remote.cloud.QrPairingPayload
+import com.mmy.g700remote.protocol.SceneKind
+import com.mmy.g700remote.protocol.StartStopAction
 import com.mmy.g700remote.ble.RemoteConnectionState
 import com.mmy.g700remote.ble.ScannedDevice
 import com.mmy.g700remote.ble.ConnectionPreference
@@ -39,6 +45,7 @@ class RemoteRepository private constructor(
     private val transport: DisplayMirrorTransport,
     private val settings: SettingsStore,
     private val scope: CoroutineScope,
+    private val cloudClient: CloudClient = CloudClient(),
 ) {
     constructor(
         context: Context,
@@ -87,6 +94,9 @@ class RemoteRepository private constructor(
             connectedNotificationEnabled = settings.isConnectedNotificationEnabled(),
             lastStatusRefreshMillis = storedStatus?.lastRefreshMillis,
             lastSeenReleaseNotesVersion = settings.getLastSeenReleaseNotesVersion(),
+            cloudEnabled = settings.isCloudEnabled(),
+            accountEmail = settings.getCloudAccount()?.email,
+            boundCar = settings.getBoundCar(),
         ),
     )
     val uiState: StateFlow<RemoteUiState> = _uiState.asStateFlow()
@@ -190,6 +200,151 @@ class RemoteRepository private constructor(
         _uiState.update { it.copy(pairedDevice = null, scanResults = emptyList()) }
         disconnect()
     }
+
+    // ---- Cloud account + binding ----
+
+    suspend fun login(email: String, password: String): CloudResult<Unit> {
+        _uiState.update { it.copy(cloudBusy = true, cloudNotice = null) }
+        return when (val result = cloudClient.login(email, password)) {
+            is CloudResult.Success -> {
+                settings.saveCloudAccount(result.value)
+                _uiState.update { it.copy(accountEmail = result.value.email, cloudBusy = false) }
+                if (settings.getBoundCar() != null) syncSettingsFromCloud()
+                CloudResult.Success(Unit)
+            }
+            is CloudResult.Failure -> {
+                _uiState.update { it.copy(cloudBusy = false, cloudNotice = result.message) }
+                result
+            }
+        }
+    }
+
+    suspend fun bindCarFromQr(rawQr: String): CloudResult<Unit> {
+        val payload = QrPairingPayload.parse(rawQr)
+            ?: return CloudResult.Failure("That QR code is not a DisplayMirror pairing code")
+        val account = settings.getCloudAccount()
+            ?: return CloudResult.Failure("Sign in before scanning your car")
+        _uiState.update { it.copy(cloudBusy = true, cloudNotice = null) }
+        // Best-effort claim of the one-time pair token (inferred endpoint); non-fatal.
+        val claim = if (payload.pairToken.isNotBlank()) {
+            cloudClient.claimCar(account, payload)
+        } else {
+            CloudResult.Success(Unit)
+        }
+        val car = payload.toBoundCar()
+        settings.saveBoundCar(car)
+        if (payload.pairingCode.isNotBlank()) settings.setPairingCode(payload.pairingCode)
+        val paired = PairedDevice(
+            name = car.name ?: "G700",
+            address = car.carId,
+            transport = TransportKind.Cloud,
+        )
+        settings.savePairedDevice(paired)
+        _uiState.update {
+            it.copy(
+                boundCar = car,
+                pairingCode = settings.getPairingCode(),
+                pairedDevice = paired,
+                cloudBusy = false,
+                cloudNotice = (claim as? CloudResult.Failure)?.let { _ ->
+                    "Car saved. Cloud bind will be confirmed on first connection."
+                },
+            )
+        }
+        syncSettingsFromCloud()
+        connectSaved()
+        return CloudResult.Success(Unit)
+    }
+
+    fun signOut() {
+        val wasCloudPaired = _uiState.value.pairedDevice?.transport == TransportKind.Cloud
+        settings.clearCloudAccount()
+        settings.clearBoundCar()
+        if (wasCloudPaired) settings.clearPairedDevice()
+        _uiState.update {
+            it.copy(
+                accountEmail = null,
+                boundCar = null,
+                pairedDevice = if (wasCloudPaired) null else it.pairedDevice,
+                camera = CameraUiState(),
+            )
+        }
+        disconnect()
+    }
+
+    fun setCloudEnabled(enabled: Boolean) {
+        settings.setCloudEnabled(enabled)
+        _uiState.update { it.copy(cloudEnabled = enabled) }
+    }
+
+    fun clearCloudNotice() {
+        _uiState.update { it.copy(cloudNotice = null) }
+    }
+
+    private fun syncSettingsFromCloud() {
+        val account = settings.getCloudAccount() ?: return
+        val car = settings.getBoundCar() ?: return
+        scope.launch {
+            when (val result = cloudClient.pullSettings(account, car.carId)) {
+                is CloudResult.Success -> appendLog(ProtocolLogEntry.Direction.Info, "Cloud preferences synced")
+                is CloudResult.Failure -> appendLog(
+                    ProtocolLogEntry.Direction.Info,
+                    "Cloud settings sync skipped: ${result.message}",
+                )
+            }
+        }
+    }
+
+    // ---- Cameras / sentinel / scenes / audio / cabin cooling ----
+
+    fun refreshCameras() = send(RemoteCommand.Cameras)
+
+    fun selectCamera(id: String) {
+        _uiState.update { it.copy(camera = it.camera.copy(selectedCameraId = id, snapshot = null, liveFrame = null)) }
+    }
+
+    fun captureSnapshot(cameraId: String) {
+        _uiState.update { it.copy(camera = it.camera.copy(loadingSnapshot = true, lastCameraError = null)) }
+        send(RemoteCommand.Snapshot(camera = cameraId, requestId = "snap-${System.currentTimeMillis()}"))
+    }
+
+    fun startLiveView(cameraId: String) = send(RemoteCommand.LiveView(StartStopAction.Start, cameraId))
+
+    fun stopLiveView() {
+        send(RemoteCommand.LiveView(StartStopAction.Stop))
+        _uiState.update { it.copy(camera = it.camera.copy(liveViewActive = false, liveFrame = null)) }
+    }
+
+    fun setSentinelArmed(armed: Boolean) =
+        send(RemoteCommand.Sentinel(if (armed) StartStopAction.Start else StartStopAction.Stop))
+
+    fun clearSentinelAlerts() {
+        _uiState.update { it.copy(camera = it.camera.copy(sentinelAlerts = emptyList())) }
+    }
+
+    fun startScene(scene: SceneKind) = send(RemoteCommand.Scene(scene))
+
+    fun refreshAudio() = send(RemoteCommand.Audio)
+
+    fun setAudio(action: com.mmy.g700remote.protocol.AudioSetAction, value: Any) =
+        send(RemoteCommand.AudioSet(action, value))
+
+    fun refreshCabinCooling() =
+        send(RemoteCommand.CabinCooling(com.mmy.g700remote.protocol.CabinCoolingAction.Status))
+
+    fun setCabinCoolingEnabled(enabled: Boolean) =
+        send(
+            RemoteCommand.CabinCooling(
+                if (enabled) {
+                    com.mmy.g700remote.protocol.CabinCoolingAction.Enable
+                } else {
+                    com.mmy.g700remote.protocol.CabinCoolingAction.Disable
+                },
+            ),
+        )
+
+    fun triggerCabinCoolingNow() =
+        send(RemoteCommand.CabinCooling(com.mmy.g700remote.protocol.CabinCoolingAction.TriggerNow))
 
     fun setLocalAuthEnabled(enabled: Boolean) {
         settings.setLocalAuthEnabled(enabled)
@@ -655,6 +810,126 @@ class RemoteRepository private constructor(
                 }
             }
 
+            is RemoteResponse.CameraList -> _uiState.update { state ->
+                val selected = state.camera.selectedCameraId
+                    ?.takeIf { it in response.cameras }
+                    ?: response.cameras.firstOrNull()
+                state.copy(
+                    camera = state.camera.copy(
+                        cameraIds = response.cameras,
+                        selectedCameraId = selected,
+                        lastCameraError = null,
+                    ),
+                )
+            }
+
+            is RemoteResponse.SnapshotPending -> _uiState.update {
+                it.copy(camera = it.camera.copy(loadingSnapshot = true))
+            }
+
+            is RemoteResponse.Snapshot -> _uiState.update { state ->
+                if (response.ok && response.dataBase64 != null) {
+                    state.copy(
+                        camera = state.camera.copy(
+                            snapshot = CameraFrame(
+                                dataBase64 = response.dataBase64,
+                                width = response.width,
+                                height = response.height,
+                            ),
+                            loadingSnapshot = false,
+                            lastCameraError = null,
+                        ),
+                    )
+                } else {
+                    state.copy(
+                        camera = state.camera.copy(
+                            loadingSnapshot = false,
+                            lastCameraError = response.error ?: "Snapshot failed",
+                        ),
+                    )
+                }
+            }
+
+            is RemoteResponse.LiveViewState -> _uiState.update {
+                it.copy(camera = it.camera.copy(liveViewActive = response.state == "started"))
+            }
+
+            is RemoteResponse.LiveFrame -> {
+                val data = response.dataBase64 ?: return
+                _uiState.update {
+                    it.copy(
+                        camera = it.camera.copy(
+                            liveFrame = CameraFrame(
+                                dataBase64 = data,
+                                width = response.width,
+                                height = response.height,
+                                seq = response.seq,
+                            ),
+                        ),
+                    )
+                }
+            }
+
+            is RemoteResponse.SentinelState -> _uiState.update {
+                it.copy(camera = it.camera.copy(sentinelArmed = response.state == "started"))
+            }
+
+            is RemoteResponse.SentinelAlert -> _uiState.update { state ->
+                val alert = SentinelAlertUi(
+                    event = response.event,
+                    eventName = response.eventName,
+                    time = response.time,
+                    thumbBase64 = response.thumbBase64,
+                )
+                state.copy(
+                    camera = state.camera.copy(
+                        sentinelAlerts = (listOf(alert) + state.camera.sentinelAlerts).take(MAX_SENTINEL_ALERTS),
+                    ),
+                )
+            }
+
+            is RemoteResponse.AudioState -> _uiState.update {
+                it.copy(
+                    audio = AudioUi(
+                        eqMode = response.eqMode,
+                        balance = response.balance,
+                        balanceMin = response.balanceMin,
+                        balanceMax = response.balanceMax,
+                        fade = response.fade,
+                        fadeMin = response.fadeMin,
+                        fadeMax = response.fadeMax,
+                        surround = response.surround,
+                        loudness = response.loudness,
+                    ),
+                )
+            }
+
+            is RemoteResponse.CabinCoolingStateResponse -> _uiState.update {
+                it.copy(
+                    cabinCooling = CabinCoolingUi(
+                        enabled = response.enabled,
+                        autonomous = response.autonomous,
+                        state = response.state,
+                        reason = response.reason,
+                        targetTemp = response.targetTemp,
+                        socFloor = response.socFloor,
+                        scheduleEnabled = response.scheduleEnabled,
+                        scheduleTime = response.scheduleTime,
+                        scheduleLeadMinutes = response.scheduleLeadMinutes,
+                    ),
+                )
+            }
+
+            is RemoteResponse.SceneResult -> _uiState.update {
+                it.copy(
+                    lastSceneStatus = if (response.ok == false) {
+                        "Scene ${response.scene ?: ""} was not accepted".trim()
+                    } else {
+                        "Scene ${response.scene ?: ""} started".trim()
+                    },
+                )
+            }
+
             is RemoteResponse.HelloResult,
             is RemoteResponse.Unknown,
             -> Unit
@@ -675,6 +950,7 @@ class RemoteRepository private constructor(
         value
             .replace(Regex("(?i)([0-9a-f]{2}:){5}[0-9a-f]{2}"), "xx:xx:xx:xx:xx:xx")
             .replace(Regex(""""pairingCode"\s*:\s*"\d{4,8}""""), """"pairingCode":"****"""")
+            .replace(Regex(""""(data|thumb)"\s*:\s*"[^"]{32,}""""), """"$1":"<image>"""")
 
     private fun applyCommandEcho(command: RemoteCommand) {
         when (command) {
@@ -971,6 +1247,7 @@ class RemoteRepository private constructor(
 
     private companion object {
         const val MAX_NAV_HISTORY = 50
+        const val MAX_SENTINEL_ALERTS = 20
         const val LOCATION_REFRESH_INTERVAL_MS = 60_000L
     }
 }

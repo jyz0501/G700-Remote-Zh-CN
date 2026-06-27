@@ -2,6 +2,8 @@ package com.mmy.g700remote
 
 import android.content.Context
 import com.mmy.g700remote.ble.DisplayMirrorBleClient
+import com.mmy.g700remote.cloud.CloudClient
+import com.mmy.g700remote.cloud.CloudRelayClient
 import com.mmy.g700remote.data.CompositeDisplayMirrorTransport
 import com.mmy.g700remote.data.RemoteRepository
 import com.mmy.g700remote.data.SecureSettingsStore
@@ -22,6 +24,14 @@ object G700RemoteAppGraph {
 
     @Volatile
     private var appUpdateManager: AppUpdateManager? = null
+
+    @Volatile
+    private var cloudClientInstance: CloudClient? = null
+
+    fun cloudClient(): CloudClient =
+        cloudClientInstance ?: synchronized(this) {
+            cloudClientInstance ?: CloudClient().also { cloudClientInstance = it }
+        }
 
     fun settings(context: Context): SecureSettingsStore =
         settingsStore ?: synchronized(this) {
@@ -52,6 +62,14 @@ object G700RemoteAppGraph {
                     context,
                     appScope,
                     pairingCodeProvider = { settings.getPairingCode() },
+                ),
+                cloud = CloudRelayClient(
+                    scope = appScope,
+                    accountProvider = { settings.getCloudAccount() },
+                    boundCarProvider = { settings.getBoundCar() },
+                    pairingCodeProvider = {
+                        settings.getBoundCar()?.pairingCode?.ifBlank { null } ?: settings.getPairingCode()
+                    },
                 ),
                 settings = settings,
                 scope = appScope,

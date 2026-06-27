@@ -24,6 +24,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 class CompositeDisplayMirrorTransport(
     private val ble: DisplayMirrorTransport,
     private val lan: DisplayMirrorLanClient,
+    private val cloud: DisplayMirrorTransport,
     private val settings: SettingsStore,
     private val scope: CoroutineScope,
 ) : DisplayMirrorTransport {
@@ -53,12 +54,27 @@ class CompositeDisplayMirrorTransport(
             }
         }
         scope.launch {
+            cloud.connectionState.collect { state ->
+                if (activeKind == TransportKind.Cloud) {
+                    _connectionState.value = normalizeReady(state, TransportKind.Cloud)
+                }
+            }
+        }
+        scope.launch {
             ble.incoming.collect { _incoming.emit(it) }
         }
         scope.launch {
             lan.incoming.collect { _incoming.emit(it) }
         }
+        scope.launch {
+            cloud.incoming.collect { _incoming.emit(it) }
+        }
     }
+
+    private fun isCloudAvailable(): Boolean =
+        settings.isCloudEnabled() &&
+            settings.getCloudAccount() != null &&
+            settings.getBoundCar() != null
 
     override fun scanForDevices(): Flow<ScannedDevice> = callbackFlow {
         _connectionState.value = RemoteConnectionState.Scanning
@@ -111,6 +127,7 @@ class CompositeDisplayMirrorTransport(
         activeAddress = null
         ble.disconnect()
         lan.disconnect()
+        cloud.disconnect()
         _connectionState.value = RemoteConnectionState.Disconnected
     }
 
@@ -142,6 +159,7 @@ class CompositeDisplayMirrorTransport(
         val address = when (kind) {
             TransportKind.Ble -> savedAddress
             TransportKind.Lan -> if (looksLikeLanEndpoint(savedAddress)) savedAddress else DisplayMirrorLanClient.AUTO_ADDRESS
+            TransportKind.Cloud -> savedAddress
         }
         activeAddress = savedAddress
         transport.connect(address)
@@ -169,21 +187,31 @@ class CompositeDisplayMirrorTransport(
     private fun candidatesFor(address: String): List<TransportKind> {
         val bleEnabled = settings.isBleEnabled()
         val lanEnabled = settings.isLanEnabled()
-        val addressKind = if (looksLikeLanEndpoint(address)) TransportKind.Lan else TransportKind.Ble
+        val cloudEnabled = isCloudAvailable()
+        val addressKind = when {
+            address.count { it == ':' } >= 5 -> TransportKind.Ble
+            looksLikeLanEndpoint(address) -> TransportKind.Lan
+            else -> TransportKind.Cloud
+        }
         val preferred = when (settings.getConnectionPreference()) {
-            ConnectionPreference.BleFirst -> listOf(TransportKind.Ble, TransportKind.Lan)
-            ConnectionPreference.LanFirst -> listOf(TransportKind.Lan, TransportKind.Ble)
+            ConnectionPreference.BleFirst -> listOf(TransportKind.Ble, TransportKind.Lan, TransportKind.Cloud)
+            ConnectionPreference.LanFirst -> listOf(TransportKind.Lan, TransportKind.Ble, TransportKind.Cloud)
+            ConnectionPreference.LocalFirst -> listOf(TransportKind.Ble, TransportKind.Lan, TransportKind.Cloud)
+            ConnectionPreference.CloudFirst -> listOf(TransportKind.Cloud, TransportKind.Lan, TransportKind.Ble)
             ConnectionPreference.BleOnly -> listOf(TransportKind.Ble)
             ConnectionPreference.LanOnly -> listOf(TransportKind.Lan)
+            ConnectionPreference.CloudOnly -> listOf(TransportKind.Cloud)
         }
         return preferred
             .filter { it != TransportKind.Ble || bleEnabled }
             .filter { it != TransportKind.Lan || lanEnabled }
+            .filter { it != TransportKind.Cloud || cloudEnabled }
             .filter { it != TransportKind.Ble || addressKind == TransportKind.Ble }
             .ifEmpty {
                 preferred
                     .filter { it != TransportKind.Ble || bleEnabled }
                     .filter { it != TransportKind.Lan || lanEnabled }
+                    .filter { it != TransportKind.Cloud || cloudEnabled }
             }
     }
 
@@ -196,6 +224,7 @@ class CompositeDisplayMirrorTransport(
         when (kind) {
             TransportKind.Ble -> ble
             TransportKind.Lan -> lan
+            TransportKind.Cloud -> cloud
         }
 
     private fun normalizeReady(state: RemoteConnectionState, kind: TransportKind): RemoteConnectionState =
@@ -208,6 +237,7 @@ class CompositeDisplayMirrorTransport(
         when (this) {
             TransportKind.Ble -> "BLE"
             TransportKind.Lan -> "LAN"
+            TransportKind.Cloud -> "Cloud"
         }
 
     companion object {
