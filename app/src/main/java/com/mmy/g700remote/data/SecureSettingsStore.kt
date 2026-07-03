@@ -497,8 +497,9 @@ private fun VehicleTelemetry.toJson(): JSONObject =
         .putNullable("parkingChargeMode", parkingChargeMode)
         .putNullable("hazardsOn", hazardsOn)
         .putNullable("drlOn", drlOn)
-        .put("seatHeatLevels", seatHeatLevels.toJsonObject())
-        .put("seatVentLevels", seatVentLevels.toJsonObject())
+        // Seat heat/vent levels are intentionally NOT persisted: the car never reports
+        // them back, so the stored value is only an optimistic echo of the last command
+        // and would wrongly show a seat as active on the next launch.
 
 private fun vehicleTelemetryFromJson(obj: JSONObject): VehicleTelemetry =
     VehicleTelemetry(
@@ -534,8 +535,8 @@ private fun vehicleTelemetryFromJson(obj: JSONObject): VehicleTelemetry =
         parkingChargeMode = obj.optNullableInt("parkingChargeMode"),
         hazardsOn = obj.optNullableBoolean("hazardsOn"),
         drlOn = obj.optNullableBoolean("drlOn"),
-        seatHeatLevels = obj.optJSONObject("seatHeatLevels").toStringIntMap(),
-        seatVentLevels = obj.optJSONObject("seatVentLevels").toStringIntMap(),
+        // seatHeatLevels/seatVentLevels deliberately left at their empty defaults (off):
+        // there is no status feedback from the car to align a restored value against.
     )
 
 private fun CarLocation.toJson(): JSONObject =
@@ -563,20 +564,4 @@ private fun JSONObject.toCarLocation(): CarLocation? {
 private fun JSONObject.putNullable(key: String, value: Any?): JSONObject {
     if (value != null) put(key, value)
     return this
-}
-
-private fun Map<String, Int>.toJsonObject(): JSONObject =
-    JSONObject().also { obj ->
-        forEach { (key, value) -> obj.put(key, value) }
-    }
-
-private fun JSONObject?.toStringIntMap(): Map<String, Int> {
-    val obj = this ?: return emptyMap()
-    return buildMap {
-        val keys = obj.keys()
-        while (keys.hasNext()) {
-            val key = keys.next()
-            put(key, obj.optInt(key))
-        }
-    }
 }

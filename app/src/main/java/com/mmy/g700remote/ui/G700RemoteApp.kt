@@ -1365,7 +1365,7 @@ private fun MainRemoteScaffold(
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(vertical = 8.dp),
                 )
-                AppTab.entries.filter { !it.showInBottomBar }.forEach { item ->
+                AppTab.entries.filter { it.showInMoreSheet }.forEach { item ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1664,68 +1664,81 @@ private fun FloatingNavBar(
     onMore: () -> Unit,
 ) {
     val tabs = remember { AppTab.entries.filter { it.showInBottomBar } }
+    // Any screen not on the bar (Audio, Cabin safety, Settings, …) keeps "More" highlighted.
+    val moreActive = selected !in tabs
     val selectedIndex = tabs.indexOf(selected).coerceAtLeast(0)
-    Row(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
             .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        shape = RoundedCornerShape(32.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shadowElevation = 8.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
     ) {
-        Surface(
-            modifier = Modifier.weight(1f),
-            shape = RoundedCornerShape(32.dp),
-            color = MaterialTheme.colorScheme.surfaceContainer,
-            shadowElevation = 8.dp,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(72.dp)
+                .padding(horizontal = 6.dp, vertical = 6.dp),
         ) {
-            BoxWithConstraints(
+            val spacing = 4.dp
+            val moreWidth = 40.dp
+            val itemWidth = (maxWidth - moreWidth - spacing * tabs.size) / tabs.size
+            val indicatorOffset by animateDpAsState(
+                targetValue = if (moreActive) {
+                    (itemWidth + spacing) * tabs.size
+                } else {
+                    (itemWidth + spacing) * selectedIndex
+                },
+                animationSpec = expressiveSpring(),
+                label = "nav-indicator-offset",
+            )
+            val indicatorWidth by animateDpAsState(
+                targetValue = if (moreActive) moreWidth else itemWidth,
+                animationSpec = expressiveSpring(),
+                label = "nav-indicator-width",
+            )
+            Surface(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(72.dp)
-                    .padding(horizontal = 6.dp, vertical = 6.dp),
+                    .offset(x = indicatorOffset)
+                    .width(indicatorWidth)
+                    .fillMaxHeight(),
+                shape = RoundedCornerShape(26.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                tonalElevation = 3.dp,
+                shadowElevation = 1.dp,
+            ) {}
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.spacedBy(spacing),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                val spacing = 4.dp
-                val itemWidth = (maxWidth - spacing * (tabs.size - 1)) / tabs.size
-                val targetOffset = (itemWidth + spacing) * selectedIndex
-                val indicatorOffset by animateDpAsState(
-                    targetValue = targetOffset,
-                    animationSpec = expressiveSpring(),
-                    label = "nav-indicator-offset",
-                )
-                Surface(
-                    modifier = Modifier
-                        .offset(x = indicatorOffset)
-                        .width(itemWidth)
-                        .fillMaxHeight(),
-                    shape = RoundedCornerShape(26.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    tonalElevation = 3.dp,
-                    shadowElevation = 1.dp,
-                ) {}
-                Row(
-                    modifier = Modifier.fillMaxSize(),
-                    horizontalArrangement = Arrangement.spacedBy(spacing),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    tabs.forEach { item ->
-                        NavPillItem(
-                            item = item,
-                            selected = selected == item,
-                            onClick = { onSelected(item) },
-                            modifier = Modifier.width(itemWidth),
-                        )
-                    }
+                tabs.forEach { item ->
+                    NavPillItem(
+                        item = item,
+                        selected = !moreActive && selected == item,
+                        onClick = { onSelected(item) },
+                        modifier = Modifier.width(itemWidth),
+                    )
                 }
+                MoreNavItem(
+                    selected = moreActive,
+                    onClick = onMore,
+                    modifier = Modifier.width(moreWidth),
+                )
             }
         }
-        MoreNavButton(onClick = onMore)
     }
 }
 
 @Composable
-private fun MoreNavButton(onClick: () -> Unit) {
+private fun MoreNavItem(
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
@@ -1733,47 +1746,32 @@ private fun MoreNavButton(onClick: () -> Unit) {
         animationSpec = expressiveSpring(),
         label = "nav-more-scale",
     )
-    Surface(
-        shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        shadowElevation = 8.dp,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
-    ) {
-        Box(
-            modifier = Modifier
-                .height(72.dp)
-                .width(64.dp)
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                }
-                .clickable(
-                    interactionSource = interactionSource,
-                    indication = null,
-                    onClick = onClick,
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Icon(
-                    Icons.Outlined.MoreHoriz,
-                    contentDescription = tr("More"),
-                    modifier = Modifier.size(22.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(3.dp))
-                Text(
-                    tr("More"),
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                )
+    val contentColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = expressiveSpring(),
+        label = "nav-more-content",
+    )
+    Box(
+        modifier = modifier
+            .height(60.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
             }
-        }
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick,
+            )
+            .clip(RoundedCornerShape(26.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            Icons.Outlined.MoreHoriz,
+            contentDescription = tr("More"),
+            modifier = Modifier.size(22.dp),
+            tint = contentColor,
+        )
     }
 }
 
@@ -2163,8 +2161,7 @@ private fun ClimateScreen(
     LaunchedEffect(ready) {
         if (ready && !comfortFetched) {
             comfortFetched = true
-            delay(900) // let the link settle before adding these heavier queries
-            onCommand(RemoteCommand.Audio)
+            delay(900) // let the link settle before adding this heavier query
             onCommand(RemoteCommand.CabinCooling(CabinCoolingAction.Status))
         }
     }
@@ -2328,51 +2325,6 @@ private fun ClimateScreen(
                     if (cooling.scheduleEnabled == true) {
                         MetricRow(tr("Schedule"), cooling.scheduleTime ?: tr("On"))
                     }
-                }
-            }
-        }
-        item {
-            Section(tr("Audio")) {
-                val audio = state.audio
-                ModeToggleGrid(
-                    toggles = listOf(
-                        ToggleSpec(
-                            label = tr("Surround"),
-                            icon = Icons.Outlined.GraphicEq,
-                            checked = audio?.surround,
-                            onOn = { onCommand(RemoteCommand.AudioSet(AudioSetAction.Surround, true)) },
-                            onOff = { onCommand(RemoteCommand.AudioSet(AudioSetAction.Surround, false)) },
-                        ),
-                        ToggleSpec(
-                            label = tr("Loudness"),
-                            icon = Icons.Outlined.GraphicEq,
-                            checked = audio?.loudness,
-                            onOn = { onCommand(RemoteCommand.AudioSet(AudioSetAction.Loudness, true)) },
-                            onOff = { onCommand(RemoteCommand.AudioSet(AudioSetAction.Loudness, false)) },
-                        ),
-                    ),
-                    enabled = ready,
-                    columns = 2,
-                )
-                if (audio != null && audio.balanceMin != null && audio.balanceMax != null) {
-                    Spacer(Modifier.height(10.dp))
-                    AudioSlider(
-                        label = tr("Balance (L–R)"),
-                        value = audio.balance ?: 0,
-                        min = audio.balanceMin,
-                        max = audio.balanceMax,
-                        enabled = ready,
-                    ) { onCommand(RemoteCommand.AudioSet(AudioSetAction.Balance, it)) }
-                }
-                if (audio != null && audio.fadeMin != null && audio.fadeMax != null) {
-                    Spacer(Modifier.height(6.dp))
-                    AudioSlider(
-                        label = tr("Fade (F–R)"),
-                        value = audio.fade ?: 0,
-                        min = audio.fadeMin,
-                        max = audio.fadeMax,
-                        enabled = ready,
-                    ) { onCommand(RemoteCommand.AudioSet(AudioSetAction.Fade, it)) }
                 }
             }
         }
@@ -6037,16 +5989,21 @@ private fun MappingChip(
     )
 }
 
-private enum class AppTab(val label: String, val icon: ImageVector, val showInBottomBar: Boolean = true) {
+private enum class AppTab(
+    val label: String,
+    val icon: ImageVector,
+    val showInBottomBar: Boolean = true,
+    val showInMoreSheet: Boolean = false,
+) {
     Home("Home", Icons.Outlined.DirectionsCar),
     Climate("Climate", Icons.Outlined.Thermostat),
     Controls("Controls", Icons.Outlined.Tune),
     Camera("Cameras", Icons.Outlined.Videocam),
     Charging("Charge", Icons.Outlined.Bolt),
-    Audio("Audio", Icons.Outlined.GraphicEq, showInBottomBar = false),
-    Cabin("Cabin safety", Icons.Outlined.AirlineSeatReclineNormal, showInBottomBar = false),
-    Performance("Performance", Icons.Outlined.Speed, showInBottomBar = false),
-    Engine("Engine data", Icons.Outlined.Analytics, showInBottomBar = false),
+    Audio("Audio", Icons.Outlined.GraphicEq, showInBottomBar = false, showInMoreSheet = true),
+    Cabin("Cabin safety", Icons.Outlined.AirlineSeatReclineNormal, showInBottomBar = false, showInMoreSheet = true),
+    Performance("Performance", Icons.Outlined.Speed, showInBottomBar = false, showInMoreSheet = true),
+    Engine("Engine data", Icons.Outlined.Analytics, showInBottomBar = false, showInMoreSheet = true),
     NavigationHistory("Links", Icons.Outlined.Link, showInBottomBar = false),
     VehicleMap("Vehicle map", Icons.Outlined.DirectionsCar, showInBottomBar = false),
     Settings("Settings", Icons.Outlined.Settings, showInBottomBar = false),
@@ -6267,7 +6224,7 @@ private fun demoTelemetry(): VehicleTelemetry =
         chargeMode = "idle",
         raceChargeActive = false,
         raceChargeTarget = 80,
-        seatVentLevels = mapOf("fl" to 1, "fr" to 0, "rl" to 0, "rr" to 0),
+        seatVentLevels = mapOf("fl" to 0, "fr" to 0, "rl" to 0, "rr" to 0),
         seatHeatLevels = mapOf("fl" to 0, "fr" to 0, "rl" to 0, "rr" to 0),
     )
 
