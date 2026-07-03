@@ -185,6 +185,46 @@ data class AudioUi(
     val loudness: Boolean? = null,
 )
 
+data class ObdUi(
+    val connected: Boolean? = null,
+    val ageMs: Long? = null,
+    val rpm: Double? = null,
+    val speed: Double? = null,
+    val coolant: Double? = null,
+    val fuel: Double? = null,
+    val intakeTemp: Double? = null,
+    val ambientTemp: Double? = null,
+    val throttle: Double? = null,
+    val load: Double? = null,
+    val moduleVoltage: Double? = null,
+    val batteryVoltage: Double? = null,
+    val vin: String? = null,
+    val updatedAtMillis: Long = System.currentTimeMillis(),
+)
+
+data class DriveTelemetryUi(
+    val latAccel: Double? = null,
+    val lonAccel: Double? = null,
+    val yaw: Double? = null,
+    val steering: Double? = null,
+    val heightLF: Double? = null,
+    val heightRF: Double? = null,
+    val heightLR: Double? = null,
+    val heightRR: Double? = null,
+    val speed: Double? = null,
+    val updatedAtMillis: Long = System.currentTimeMillis(),
+)
+
+data class CabinUi(
+    val child: Int? = null,
+    val pet: Int? = null,
+    val occupant: Int? = null,
+    val seatbelt: Int? = null,
+    val drowsiness: Int? = null,
+    val distraction: Int? = null,
+    val updatedAtMillis: Long = System.currentTimeMillis(),
+)
+
 data class CabinCoolingUi(
     val enabled: Boolean? = null,
     val autonomous: Boolean? = null,
@@ -267,6 +307,9 @@ data class RemoteUiState(
     val camera: CameraUiState = CameraUiState(),
     val audio: AudioUi? = null,
     val cabinCooling: CabinCoolingUi? = null,
+    val obd: ObdUi? = null,
+    val driveTelemetry: DriveTelemetryUi? = null,
+    val cabin: CabinUi? = null,
     val lastSceneStatus: String? = null,
 ) {
     val isSignedIn: Boolean get() = accountEmail != null

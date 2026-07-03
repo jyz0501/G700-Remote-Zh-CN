@@ -46,11 +46,14 @@ object CloudConfig {
     const val QR_SCHEMA_VERSION = 1
 
     /**
-     * Relay frame envelope. The car leg uses `{"t":"open|msg|close","sid":<session>,"d":<line>}`.
-     * We mirror that on the phone leg (INFERRED). If the live phone leg turns out to be a raw
-     * newline-JSON passthrough, set [RELAY_USE_ENVELOPE] = false during calibration.
+     * Relay frame envelope. The car leg uses `{"t":"open|msg|close","sid":<session>,"d":<line>}`,
+     * but the phone leg (`/ws/phone`) is a RAW newline-JSON passthrough — confirmed from the
+     * official Car Key companion app, which sends/receives bare protocol JSON with no envelope
+     * (send: androidx/activity/result/i.java:150-153 + o1/e0.java:32-53; receive: i.java:229-252).
+     * Wrapping frames in `{t,sid,d}` made the relay drop our commands and made us discard the
+     * bare-JSON helloResult, producing a false "car offline over cloud". Keep this false.
      */
-    const val RELAY_USE_ENVELOPE = true
+    const val RELAY_USE_ENVELOPE = false
     const val ENVELOPE_TYPE = "t"
     const val ENVELOPE_SID = "sid"
     const val ENVELOPE_DATA = "d"

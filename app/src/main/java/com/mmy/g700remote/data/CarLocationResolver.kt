@@ -24,6 +24,11 @@ object NoopCarLocationProvider : CarLocationProvider {
 class CarLocationResolver(context: Context) : CarLocationProvider {
     private val appContext = context.applicationContext
 
+    private companion object {
+        // Last-known phone fixes older than this are treated as unusable for fallback.
+        const val MAX_PHONE_FIX_AGE_MS = 10 * 60_000L
+    }
+
     override suspend fun withResolvedAddress(location: CarLocation): CarLocation =
         withContext(Dispatchers.IO) {
             val address = resolveAddress(location.lat, location.lon)
@@ -41,14 +46,18 @@ class CarLocationResolver(context: Context) : CarLocationProvider {
             ).mapNotNull { provider ->
                 runCatching { manager.getLastKnownLocation(provider) }.getOrNull()
             }
-            candidates.maxByOrNull(Location::getTime)?.let {
-                CarLocation(
-                    lat = it.latitude,
-                    lon = it.longitude,
-                    source = CarLocationSource.PhoneBle,
-                    updatedAtMillis = System.currentTimeMillis(),
-                )
-            }
+            val best = candidates.maxByOrNull(Location::getTime) ?: return@withContext null
+            // Reject ancient last-known fixes so we never present a wildly stale phone position as
+            // the current fallback location. We only fetch last-known (no active updates), so stamp
+            // updatedAtMillis with the real fix time, not "now", to keep staleness logic honest.
+            val fixAge = System.currentTimeMillis() - best.time
+            if (fixAge > MAX_PHONE_FIX_AGE_MS) return@withContext null
+            CarLocation(
+                lat = best.latitude,
+                lon = best.longitude,
+                source = CarLocationSource.PhoneBle,
+                updatedAtMillis = best.time,
+            )
         }
 
     private fun hasLocationPermission(): Boolean =

@@ -74,7 +74,7 @@ class CompositeDisplayMirrorTransport(
 
     private fun isCloudAvailable(): Boolean =
         settings.isCloudEnabled() &&
-            settings.getBoundCar()?.pairToken?.isNotBlank() == true
+            settings.getBoundCar()?.cloudClientToken?.isNotBlank() == true
 
     override fun scanForDevices(): Flow<ScannedDevice> = callbackFlow {
         _connectionState.value = RemoteConnectionState.Scanning
@@ -166,6 +166,15 @@ class CompositeDisplayMirrorTransport(
     private suspend fun connectCandidate(kind: TransportKind, savedAddress: String): String? {
         activeKind = kind
         val transport = transportFor(kind)
+        // Tear down any previously-active transport of a different kind before switching, so a
+        // live BLE GATT / LAN socket / cloud socket isn't left dangling when the user changes the
+        // connection mode (or we fall back) mid-session. activeKind is already the new kind above,
+        // so the old transport's Disconnected emission is ignored by its state collector. Retrying
+        // the same kind (previous === transport) is left alone — the client's own connect() resets it.
+        val previous = activeTransport
+        if (previous != null && previous !== transport) {
+            runCatching { previous.disconnect() }
+        }
         activeTransport = transport
         val address = when (kind) {
             TransportKind.Ble -> if (looksLikeBleMac(savedAddress)) savedAddress else DisplayMirrorBleClient.AUTO_ADDRESS

@@ -249,6 +249,12 @@ class RemoteRepository private constructor(
                 }
                 is CloudResult.Failure -> {
                     cloudNotice = "Paired for local control. Cloud binding failed: ${res.message}"
+                    // Preserve any previously-minted relay credentials — rescanning an already-used
+                    // pair token must NOT erase cloudClientToken with an empty string.
+                    val existing = settings.getBoundCar()
+                    cloudClientToken = existing?.cloudClientToken ?: ""
+                    if (resolvedCarId == null) resolvedCarId = existing?.carId?.ifBlank { null }
+                    if (resolvedRelay == null) resolvedRelay = existing?.relayBase?.ifBlank { null }
                 }
             }
         }
@@ -365,6 +371,12 @@ class RemoteRepository private constructor(
 
     fun setAudio(action: com.mmy.g700remote.protocol.AudioSetAction, value: Any) =
         send(RemoteCommand.AudioSet(action, value))
+
+    fun refreshObd() = send(RemoteCommand.Obd)
+
+    fun refreshTelemetry() = send(RemoteCommand.Telemetry)
+
+    fun refreshCabin() = send(RemoteCommand.Cabin)
 
     fun refreshCabinCooling() =
         send(RemoteCommand.CabinCooling(com.mmy.g700remote.protocol.CabinCoolingAction.Status))
@@ -676,10 +688,16 @@ class RemoteRepository private constructor(
     private fun startBackgroundRefresh() {
         if (backgroundRefreshJob?.isActive == true) return
         backgroundRefreshJob = scope.launch {
+            var cycle = 0
             while (true) {
                 if (_uiState.value.connectionState is RemoteConnectionState.Ready) {
-                    refreshAll()
-                    delay(120_000)
+                    // Force a location refresh on the first background cycle and increment the cycle
+                    // counter so the heavy charging queries rotate. Previously this always ran as
+                    // cycle 0 with forceLocation=false, so telemetry kept updating but location did
+                    // not — leaving the car position stale while backgrounded.
+                    refreshAll(cycle = cycle, forceLocation = cycle == 0)
+                    cycle += 1
+                    delay(BACKGROUND_REFRESH_INTERVAL_MS)
                 } else {
                     break
                 }
@@ -704,19 +722,41 @@ class RemoteRepository private constructor(
         val now = System.currentTimeMillis()
         if (!force && now - lastLocationRefreshMillis < LOCATION_REFRESH_INTERVAL_MS) return
         lastLocationRefreshMillis = now
-        if (
-            _uiState.value.carLocationPreference == CarLocationPreference.PhoneWhenBle &&
-            _uiState.value.connectionState is RemoteConnectionState.Ready &&
-            (_uiState.value.connectionState as RemoteConnectionState.Ready).transport == TransportKind.Ble
-        ) {
-            val phoneLocation = locationResolver.phoneLocationWhenAllowed()
-            if (phoneLocation != null) {
-                updateCarLocation(phoneLocation)
-                resolveCarLocationAddress(phoneLocation)
-                return
-            }
+
+        // Explicit user preference: while on BLE, always prefer the phone's own location.
+        val onBle = (_uiState.value.connectionState as? RemoteConnectionState.Ready)?.transport == TransportKind.Ble
+        if (_uiState.value.carLocationPreference == CarLocationPreference.PhoneWhenBle && onBle) {
+            if (usePhoneLocationFallback()) return
         }
+
+        // Default: ask the car for a fresh GPS fix. applyResponse(Location) updates carLocation
+        // synchronously when the car answers, so we can tell afterwards whether we got a fresh fix.
+        val beforeMillis = _uiState.value.carLocation
+            ?.takeIf { it.source == CarLocationSource.DisplayMirror }
+            ?.updatedAtMillis
         sendForRefresh(RemoteCommand.GetLocation)
+        val after = _uiState.value.carLocation
+        val gotFreshCarFix = after?.source == CarLocationSource.DisplayMirror &&
+            after.updatedAtMillis != beforeMillis
+        if (gotFreshCarFix) return
+
+        // No fresh car fix this cycle. If the newest car fix is missing or stale (older than
+        // ~1.5 min), fall back to the phone's location so we never show a frozen car position.
+        // When the car starts answering again, the branch above resumes using the car fix.
+        val carFixAge = after
+            ?.takeIf { it.source == CarLocationSource.DisplayMirror }
+            ?.let { now - it.updatedAtMillis }
+        val carFixStale = carFixAge == null || carFixAge > CAR_LOCATION_STALE_MS
+        if (carFixStale) {
+            usePhoneLocationFallback()
+        }
+    }
+
+    private suspend fun usePhoneLocationFallback(): Boolean {
+        val phoneLocation = locationResolver.phoneLocationWhenAllowed() ?: return false
+        updateCarLocation(phoneLocation)
+        resolveCarLocationAddress(phoneLocation)
+        return true
     }
 
     private suspend fun sendImmediate(command: RemoteCommand, showNavigationStatus: Boolean = true): Boolean {
@@ -993,6 +1033,58 @@ class RemoteRepository private constructor(
                         scheduleEnabled = response.scheduleEnabled,
                         scheduleTime = response.scheduleTime,
                         scheduleLeadMinutes = response.scheduleLeadMinutes,
+                    ),
+                )
+            }
+
+            is RemoteResponse.ObdState -> _uiState.update {
+                it.copy(
+                    obd = ObdUi(
+                        connected = response.connected,
+                        ageMs = response.ageMs,
+                        rpm = response.rpm,
+                        speed = response.speed,
+                        coolant = response.coolant,
+                        fuel = response.fuel,
+                        intakeTemp = response.intakeTemp,
+                        ambientTemp = response.ambientTemp,
+                        throttle = response.throttle,
+                        load = response.load,
+                        moduleVoltage = response.moduleVoltage,
+                        batteryVoltage = response.batteryVoltage,
+                        vin = response.vin ?: it.obd?.vin,
+                        updatedAtMillis = System.currentTimeMillis(),
+                    ),
+                )
+            }
+
+            is RemoteResponse.TelemetryState -> _uiState.update {
+                it.copy(
+                    driveTelemetry = DriveTelemetryUi(
+                        latAccel = response.latAccel,
+                        lonAccel = response.lonAccel,
+                        yaw = response.yaw,
+                        steering = response.steering,
+                        heightLF = response.heightLF,
+                        heightRF = response.heightRF,
+                        heightLR = response.heightLR,
+                        heightRR = response.heightRR,
+                        speed = response.speed,
+                        updatedAtMillis = System.currentTimeMillis(),
+                    ),
+                )
+            }
+
+            is RemoteResponse.CabinState -> _uiState.update {
+                it.copy(
+                    cabin = CabinUi(
+                        child = response.child,
+                        pet = response.pet,
+                        occupant = response.occupant,
+                        seatbelt = response.seatbelt,
+                        drowsiness = response.drowsiness,
+                        distraction = response.distraction,
+                        updatedAtMillis = System.currentTimeMillis(),
                     ),
                 )
             }
@@ -1337,6 +1429,9 @@ class RemoteRepository private constructor(
         const val MAX_SENTINEL_ALERTS = 20
         const val LOCATION_REFRESH_INTERVAL_MS = 60_000L
         const val FOREGROUND_REFRESH_INTERVAL_MS = 5_000L
+        const val BACKGROUND_REFRESH_INTERVAL_MS = 120_000L
+        // A car GPS fix older than this (no fresh answer) triggers phone-location fallback.
+        const val CAR_LOCATION_STALE_MS = 90_000L
         const val HEAVY_REFRESH_EVERY = 3
     }
 }

@@ -167,6 +167,24 @@ sealed class RemoteCommand {
         override val expectedResponseTypes: Set<String> = setOf("audio", "error")
     }
 
+    /** Live engine / OBD-II snapshot (rpm, speed, coolant, voltages …). */
+    object Obd : RemoteCommand() {
+        override val cmd: String = "obd"
+        override val expectedResponseTypes: Set<String> = setOf("obd", "error")
+    }
+
+    /** Chassis telemetry: G-forces, steering angle, per-corner ride height. */
+    object Telemetry : RemoteCommand() {
+        override val cmd: String = "telemetry"
+        override val expectedResponseTypes: Set<String> = setOf("telemetry", "error")
+    }
+
+    /** Cabin safety: occupancy, child/pet detection, driver monitoring. */
+    object Cabin : RemoteCommand() {
+        override val cmd: String = "cabin"
+        override val expectedResponseTypes: Set<String> = setOf("cabin", "error")
+    }
+
     data class AudioSet(
         val action: AudioSetAction,
         val value: Any,
@@ -218,7 +236,7 @@ sealed class RemoteCommand {
                 position?.let { json.put("position", it.wireValue) }
                 level?.let { json.put("level", it.coerceIn(0, 3)) }
             }
-            Cameras, Audio -> Unit
+            Cameras, Audio, Obd, Telemetry, Cabin -> Unit
             is Snapshot -> {
                 json.put("camera", camera)
                 requestId?.let { json.put("id", it) }
@@ -265,6 +283,9 @@ sealed class RemoteCommand {
         is Sentinel -> "Sentinel ${action.label}"
         is Scene -> "Scene ${scene.label}"
         Audio -> "Audio status"
+        Obd -> "Engine / OBD status"
+        Telemetry -> "Telemetry status"
+        Cabin -> "Cabin status"
         is AudioSet -> "Audio ${action.label}"
         is CabinCooling -> "Cabin cooling ${action.label}"
     }

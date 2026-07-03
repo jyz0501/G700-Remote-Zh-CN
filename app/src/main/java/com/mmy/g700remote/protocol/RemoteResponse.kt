@@ -196,6 +196,52 @@ sealed class RemoteResponse {
         override val type: String = "sentinelAlert"
     }
 
+    data class ObdState(
+        val connected: Boolean?,
+        val ageMs: Long?,
+        val rpm: Double?,
+        val speed: Double?,
+        val coolant: Double?,
+        val fuel: Double?,
+        val intakeTemp: Double?,
+        val ambientTemp: Double?,
+        val throttle: Double?,
+        val load: Double?,
+        val moduleVoltage: Double?,
+        val batteryVoltage: Double?,
+        val vin: String?,
+        override val raw: String,
+    ) : RemoteResponse() {
+        override val type: String = "obd"
+    }
+
+    data class TelemetryState(
+        val latAccel: Double?,
+        val lonAccel: Double?,
+        val yaw: Double?,
+        val steering: Double?,
+        val heightLF: Double?,
+        val heightRF: Double?,
+        val heightLR: Double?,
+        val heightRR: Double?,
+        val speed: Double?,
+        override val raw: String,
+    ) : RemoteResponse() {
+        override val type: String = "telemetry"
+    }
+
+    data class CabinState(
+        val child: Int?,
+        val pet: Int?,
+        val occupant: Int?,
+        val seatbelt: Int?,
+        val drowsiness: Int?,
+        val distraction: Int?,
+        override val raw: String,
+    ) : RemoteResponse() {
+        override val type: String = "cabin"
+    }
+
     data class Unknown(
         override val type: String,
         override val raw: String,
@@ -287,6 +333,46 @@ sealed class RemoteResponse {
                     fadeMax = json.optIntOrNull("fadeMax"),
                     surround = json.optBooleanOrNull("surround"),
                     loudness = json.optBooleanOrNull("loudness"),
+                    raw = raw,
+                )
+
+                "obd" -> ObdState(
+                    connected = json.optBooleanOrNull("connected"),
+                    ageMs = if (json.has("ageMs") && !json.isNull("ageMs")) json.optLong("ageMs") else null,
+                    rpm = json.optDoubleOrNull("rpm"),
+                    speed = json.optDoubleOrNull("speed"),
+                    coolant = json.optDoubleOrNull("coolant"),
+                    fuel = json.optDoubleOrNull("fuel"),
+                    intakeTemp = json.optDoubleOrNull("intakeTemp"),
+                    ambientTemp = json.optDoubleOrNull("ambientTemp"),
+                    throttle = json.optDoubleOrNull("throttle"),
+                    load = json.optDoubleOrNull("load"),
+                    moduleVoltage = json.optDoubleOrNull("moduleVoltage"),
+                    batteryVoltage = json.optDoubleOrNull("batteryVoltage"),
+                    vin = json.optStringOrNull("vin"),
+                    raw = raw,
+                )
+
+                "telemetry" -> TelemetryState(
+                    latAccel = json.optDoubleOrNull("latAccel"),
+                    lonAccel = json.optDoubleOrNull("lonAccel"),
+                    yaw = json.optDoubleOrNull("yaw"),
+                    steering = json.optDoubleOrNull("steering"),
+                    heightLF = json.optDoubleOrNull("heightLF"),
+                    heightRF = json.optDoubleOrNull("heightRF"),
+                    heightLR = json.optDoubleOrNull("heightLR"),
+                    heightRR = json.optDoubleOrNull("heightRR"),
+                    speed = json.optDoubleOrNull("speed"),
+                    raw = raw,
+                )
+
+                "cabin" -> CabinState(
+                    child = json.optIntOrNull("child"),
+                    pet = json.optIntOrNull("pet"),
+                    occupant = json.optIntOrNull("occupant"),
+                    seatbelt = json.optIntOrNull("seatbelt"),
+                    drowsiness = json.optIntOrNull("drowsiness"),
+                    distraction = json.optIntOrNull("distraction"),
                     raw = raw,
                 )
 

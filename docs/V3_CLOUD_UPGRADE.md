@@ -128,13 +128,26 @@ Tested with a real account + a real car QR. Confirmed:
   adopted; before adoption it returns `403 {"error":"not your car"}`. `push-settings` mirrors it.
 - **Owned cars** `GET /api/collections/cars/records` + Bearer → the account's cars
   (`{car_id, name, online, owner, last_seen}`).
-- **Relay phone leg — VERIFIED.** The phone connects to the **same `/ws/car`** endpoint as the car,
-  with `X-Car-Id: <carId>` + `X-Auth-Token: <QR pair token>` → **101 Switching Protocols**. The
-  binding is checked (JWT / garbage / wrong-car / `/ws/phone` all 401), and **no account is
-  required** — the `pair` token alone authorizes the phone. The relay then bridges this connection
-  to the real car (authed with its secret `carToken`) and forwards the phone's `open/msg/close`
-  envelopes (`{t,sid,d}`) to it. End-to-end data flow couldn't be exercised only because the test
-  car was offline. (`POST /api/relay-auth` is an internal validator the worker uses; not client-facing.)
+- **Relay phone leg — ⚠️ THE ABOVE "VERIFIED" CLAIM IS FALSE. CORRECTED 2026-06-28.**
+  A later variable-isolated re-test (`scratchpad/rethink_bridge.js`) disproved it:
+  - `/ws/car` + `X-Auth-Token = pair` → **401**, *even with the car slot free* (Phase A) and *even
+    while the real car is online* (Phase B). The earlier "101" was a misobservation; the only 401
+    cause I had attributed to "slot taken" was actually "pair is not a valid `/ws/car` token at all."
+  - The authoritative car-side source (`decompiled-v3.3/.../CloudRelayClient.java:230`) sends **only**
+    `X-Car-Id` + `X-Auth-Token = carToken` (the device secret) to `/ws/car`. No signature, no fleetKey,
+    no pair. `/ws/car` authenticates the **car**, never a phone.
+  - `/ws/phone` rejects **every** value we possess — pair, carToken, pairingCode, fleetKey, owner JWT
+    (Bearer / X-Auth-Token / query `?token` / `Sec-WebSocket-Protocol`) — regardless of whether the
+    car is owned and online (Phase C/D). Always `401 unauthorized` before the upgrade.
+  - No REST endpoint mints a phone/relay token (24 candidate names all 404; `rest_discover.js`).
+    `relay-auth` requires the relay's own server secret (`{ok:false}`), unusable externally.
+  - **Net:** the `/ws/phone` transport credential (header name + key + message) exists only in the
+    **official remote phone app** + the relay server. It is NOT derivable from the QR, the REST
+    contract, the fleet key, or the car/launcher APK. `CloudConfig.RELAY_PHONE_PATH = "/ws/car"` +
+    pair (as shipped) **cannot work**. To finish: decompile the official remote app APK, or capture
+    its live `/ws/phone` WS-upgrade headers (mitmproxy/Frida/adb). Then it's a one-file change in
+    `cloud/CloudConfig.kt` + `cloud/CloudRelayClient.kt`. **Local (BLE/LAN) control is unaffected and
+    is the working path.** Full corrected model: project-root `CLOUD_API_COMPLETE_FLOW.md`.
 
 ### Assumptions / open items
 - **Relay auth is verified; end-to-end bridging is not** (test car was offline). The pair token must

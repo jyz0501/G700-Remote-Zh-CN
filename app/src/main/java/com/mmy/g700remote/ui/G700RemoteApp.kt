@@ -77,7 +77,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.AcUnit
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Air
+import androidx.compose.material.icons.outlined.AirlineSeatReclineNormal
+import androidx.compose.material.icons.outlined.Analytics
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Bedtime
 import androidx.compose.material.icons.outlined.Bluetooth
@@ -91,10 +94,12 @@ import androidx.compose.material.icons.outlined.GraphicEq
 import androidx.compose.material.icons.outlined.Hotel
 import androidx.compose.material.icons.outlined.LocalCarWash
 import androidx.compose.material.icons.outlined.Logout
+import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material.icons.outlined.Pets
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.QrCodeScanner
+import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material.icons.outlined.Sensors
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.Stop
@@ -122,6 +127,7 @@ import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.Thermostat
 import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material.icons.outlined.WaterDrop
@@ -134,16 +140,19 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -168,6 +177,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -267,6 +277,8 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import kotlin.coroutines.resume
+import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -1212,6 +1224,7 @@ private fun MainRemoteScaffold(
     contentPadding: PaddingValues,
 ) {
     var tab by rememberSaveable { mutableStateOf(AppTab.Home) }
+    var showMoreSheet by remember { mutableStateOf(false) }
     BackHandler(enabled = tab != AppTab.Home) {
         tab = AppTab.Home
     }
@@ -1247,6 +1260,7 @@ private fun MainRemoteScaffold(
             FloatingNavBar(
                 selected = if (tab == AppTab.VehicleMap) AppTab.Home else tab,
                 onSelected = { tab = it },
+                onMore = { showMoreSheet = true },
             )
         },
     ) { padding ->
@@ -1267,6 +1281,10 @@ private fun MainRemoteScaffold(
                 AppTab.Controls -> ControlsScreen(state, onCommand, screenModifier)
                 AppTab.Camera -> CameraScreen(state, onCommand, onClearSentinelAlerts, screenModifier)
                 AppTab.Charging -> ChargingScreen(state, onCommand, screenModifier)
+                AppTab.Audio -> AudioScreen(state, onCommand, screenModifier)
+                AppTab.Cabin -> CabinSafetyScreen(state, onCommand, screenModifier)
+                AppTab.Performance -> PerformanceScreen(state, onCommand, screenModifier)
+                AppTab.Engine -> EngineDataScreen(state, onCommand, screenModifier)
                 AppTab.VehicleMap -> VehicleMapScreen(
                     state = state,
                     modifier = screenModifier,
@@ -1327,6 +1345,52 @@ private fun MainRemoteScaffold(
         ) { activeTab ->
             val screenModifier = Modifier.fillMaxSize()
             screenContent(activeTab, screenModifier)
+        }
+    }
+    if (showMoreSheet) {
+        val moreSheetState = rememberModalBottomSheetState()
+        ModalBottomSheet(
+            onDismissRequest = { showMoreSheet = false },
+            sheetState = moreSheetState,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 28.dp),
+            ) {
+                Text(
+                    tr("More"),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(vertical = 8.dp),
+                )
+                AppTab.entries.filter { !it.showInBottomBar }.forEach { item ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(18.dp))
+                            .clickable {
+                                showMoreSheet = false
+                                tab = item
+                            }
+                            .padding(horizontal = 12.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            item.icon,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.width(16.dp))
+                        Text(
+                            tr(item.label),
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -1394,11 +1458,6 @@ private fun HeaderStatusAction(
         animationSpec = expressiveSpring(),
         label = "header-status-scale",
     )
-    val deviceName = if (state.demoMode) {
-        tr("Demo mode")
-    } else {
-        state.pairedDevice?.name ?: state.pairedDevice?.address ?: tr("No paired device")
-    }
     val isConnected = state.connectionState is RemoteConnectionState.Ready
     val transportIcon = state.headerTransportIcon()
     val statusIcon = when {
@@ -1445,16 +1504,6 @@ private fun HeaderStatusAction(
                     tint = MaterialTheme.colorScheme.onSurface,
                 )
             }
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                deviceName,
-                modifier = Modifier.weight(1f, fill = false),
-                style = MaterialTheme.typography.bodySmall.copy(lineHeight = 15.sp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -1612,17 +1661,20 @@ private fun <T> expressiveSpring() = spring<T>(
 private fun FloatingNavBar(
     selected: AppTab,
     onSelected: (AppTab) -> Unit,
+    onMore: () -> Unit,
 ) {
     val tabs = remember { AppTab.entries.filter { it.showInBottomBar } }
     val selectedIndex = tabs.indexOf(selected).coerceAtLeast(0)
-    Box(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
             .padding(horizontal = 12.dp, vertical = 8.dp),
-        contentAlignment = Alignment.Center,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Surface(
+            modifier = Modifier.weight(1f),
             shape = RoundedCornerShape(32.dp),
             color = MaterialTheme.colorScheme.surfaceContainer,
             shadowElevation = 8.dp,
@@ -1666,6 +1718,60 @@ private fun FloatingNavBar(
                         )
                     }
                 }
+            }
+        }
+        MoreNavButton(onClick = onMore)
+    }
+}
+
+@Composable
+private fun MoreNavButton(onClick: () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.94f else 1f,
+        animationSpec = expressiveSpring(),
+        label = "nav-more-scale",
+    )
+    Surface(
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shadowElevation = 8.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
+    ) {
+        Box(
+            modifier = Modifier
+                .height(72.dp)
+                .width(64.dp)
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                }
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = onClick,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Icon(
+                    Icons.Outlined.MoreHoriz,
+                    contentDescription = tr("More"),
+                    modifier = Modifier.size(22.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    tr("More"),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
             }
         }
     }
@@ -2141,6 +2247,9 @@ private fun ClimateScreen(
                         ToggleSpec(tr("Auto defrost"), Icons.Outlined.AcUnit, telemetry.autoDefrost,
                             onOn = { onCommand(RemoteCommand.Climate(ClimateAction.AutoDefrostOn)) },
                             onOff = { onCommand(RemoteCommand.Climate(ClimateAction.AutoDefrostOff)) }),
+                        ToggleSpec(tr("Recirculate"), Icons.Outlined.Air, telemetry.circulation?.let { it != 0 },
+                            onOn = { onCommand(RemoteCommand.Climate(ClimateAction.SetCirculation, numericValue = 1)) },
+                            onOff = { onCommand(RemoteCommand.Climate(ClimateAction.SetCirculation, numericValue = 0)) }),
                     ) + if (state.regionalFeaturesEnabled) {
                         listOf(
                             ToggleSpec(tr("PM2.5 filter"), Icons.Outlined.Air, null,
@@ -2291,6 +2400,437 @@ private fun AudioSlider(
         enabled = enabled,
         onValueChangeFinished = { onValueChangeFinished(current.toInt()) },
     )
+}
+
+// ----------------------------------------------------------------------------
+// Reference car-key parity screens (reachable from the More bar):
+// Audio, Cabin safety, Performance/telemetry, Engine (OBD) data.
+// Each mirrors a proven screen from the original DisplayMirror phone companion
+// and only renders data the car actually emits (parse-if-present).
+// ----------------------------------------------------------------------------
+
+/** Full audio settings screen: EQ preset, surround/loudness, balance & fade. */
+@Composable
+private fun AudioScreen(
+    state: RemoteUiState,
+    onCommand: (RemoteCommand) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val ready = state.connectionState is RemoteConnectionState.Ready
+    val audio = state.audio
+    LaunchedEffect(ready) {
+        if (ready) {
+            delay(300)
+            onCommand(RemoteCommand.Audio)
+        }
+    }
+    LazyColumn(
+        modifier = modifier,
+        contentPadding = PaddingValues(20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        item {
+            Section(tr("Equalizer")) {
+                val eq = audio?.eqMode ?: 0
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(tr("EQ mode"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            "${tr("Mode")} $eq",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilledTonalIconButton(
+                            enabled = ready && eq > EQ_MODE_MIN,
+                            onClick = {
+                                onCommand(RemoteCommand.AudioSet(AudioSetAction.EqMode, (eq - 1).coerceAtLeast(EQ_MODE_MIN)))
+                            },
+                        ) { Icon(Icons.Outlined.Remove, contentDescription = tr("Lower")) }
+                        FilledTonalIconButton(
+                            enabled = ready && eq < EQ_MODE_MAX,
+                            onClick = {
+                                onCommand(RemoteCommand.AudioSet(AudioSetAction.EqMode, (eq + 1).coerceAtMost(EQ_MODE_MAX)))
+                            },
+                        ) { Icon(Icons.Outlined.Add, contentDescription = tr("Raise")) }
+                    }
+                }
+            }
+        }
+        item {
+            Section(tr("Sound field")) {
+                ModeToggleGrid(
+                    toggles = listOf(
+                        ToggleSpec(
+                            label = tr("Surround"),
+                            icon = Icons.Outlined.GraphicEq,
+                            checked = audio?.surround,
+                            onOn = { onCommand(RemoteCommand.AudioSet(AudioSetAction.Surround, true)) },
+                            onOff = { onCommand(RemoteCommand.AudioSet(AudioSetAction.Surround, false)) },
+                        ),
+                        ToggleSpec(
+                            label = tr("Loudness"),
+                            icon = Icons.Outlined.GraphicEq,
+                            checked = audio?.loudness,
+                            onOn = { onCommand(RemoteCommand.AudioSet(AudioSetAction.Loudness, true)) },
+                            onOff = { onCommand(RemoteCommand.AudioSet(AudioSetAction.Loudness, false)) },
+                        ),
+                    ),
+                    enabled = ready,
+                    columns = 2,
+                )
+            }
+        }
+        item {
+            Section(tr("Balance & fade")) {
+                if (audio?.balanceMin != null && audio.balanceMax != null) {
+                    AudioSlider(
+                        label = tr("Balance (L–R)"),
+                        value = audio.balance ?: 0,
+                        min = audio.balanceMin,
+                        max = audio.balanceMax,
+                        enabled = ready,
+                    ) { onCommand(RemoteCommand.AudioSet(AudioSetAction.Balance, it)) }
+                    Spacer(Modifier.height(6.dp))
+                }
+                if (audio?.fadeMin != null && audio.fadeMax != null) {
+                    AudioSlider(
+                        label = tr("Fade (F–R)"),
+                        value = audio.fade ?: 0,
+                        min = audio.fadeMin,
+                        max = audio.fadeMax,
+                        enabled = ready,
+                    ) { onCommand(RemoteCommand.AudioSet(AudioSetAction.Fade, it)) }
+                }
+                if (audio?.balanceMin == null && audio?.fadeMin == null) {
+                    Text(
+                        tr("Waiting for audio data…"),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Cabin safety: occupancy, child/pet detection, seatbelt, driver monitoring. */
+@Composable
+private fun CabinSafetyScreen(
+    state: RemoteUiState,
+    onCommand: (RemoteCommand) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val ready = state.connectionState is RemoteConnectionState.Ready
+    val cabin = state.cabin
+    LaunchedEffect(ready) {
+        while (ready) {
+            onCommand(RemoteCommand.Cabin)
+            delay(1200)
+        }
+    }
+    LazyColumn(
+        modifier = modifier,
+        contentPadding = PaddingValues(20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        item {
+            Section(tr("Occupancy")) {
+                DetectRow(tr("Occupant"), cabin?.occupant, tr("Present"), StatusTone.Ok)
+                DetectRow(tr("Child in cabin"), cabin?.child, tr("Detected"), StatusTone.Alert)
+                DetectRow(tr("Pet in cabin"), cabin?.pet, tr("Detected"), StatusTone.Alert)
+                DetectRow(tr("Seatbelt"), cabin?.seatbelt, tr("Check"), StatusTone.Warn)
+            }
+        }
+        item {
+            Section(tr("Driver monitoring")) {
+                LevelRow(tr("Drowsiness"), cabin?.drowsiness)
+                LevelRow(tr("Distraction"), cabin?.distraction)
+            }
+        }
+        if (cabin == null) {
+            item {
+                Text(
+                    tr("Waiting for cabin data…"),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/** Performance/telemetry: graphical G-force, steering angle, ride height, speed. */
+@Composable
+private fun PerformanceScreen(
+    state: RemoteUiState,
+    onCommand: (RemoteCommand) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val ready = state.connectionState is RemoteConnectionState.Ready
+    val t = state.driveTelemetry
+    LaunchedEffect(ready) {
+        while (ready) {
+            onCommand(RemoteCommand.Telemetry)
+            delay(700)
+        }
+    }
+    LazyColumn(
+        modifier = modifier,
+        contentPadding = PaddingValues(20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        item {
+            Section(tr("G-force")) {
+                GForceMeter(
+                    latAccel = t?.latAccel,
+                    lonAccel = t?.lonAccel,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(240.dp),
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(tr("Lateral"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(formatG(t?.latAccel), fontWeight = FontWeight.SemiBold)
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(tr("Longitudinal"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(formatG(t?.lonAccel), fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+        item {
+            Section(tr("Chassis")) {
+                MetricRow(tr("Speed"), t?.speed?.let { "${it.roundToInt()} km/h" } ?: "—")
+                MetricRow(tr("Steering angle"), t?.steering?.let { "${it.roundToInt()}°" } ?: "—")
+                MetricRow(tr("Yaw rate"), t?.yaw?.let { String.format(Locale.US, "%.1f °/s", it) } ?: "—")
+            }
+        }
+        item {
+            Section(tr("Ride height")) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    RideHeightCell(tr("LF"), t?.heightLF, Modifier.weight(1f))
+                    RideHeightCell(tr("RF"), t?.heightRF, Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    RideHeightCell(tr("LR"), t?.heightLR, Modifier.weight(1f))
+                    RideHeightCell(tr("RR"), t?.heightRR, Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+/** Engine / OBD-II live data: rpm, speed, temps, throttle, load, voltages, VIN. */
+@Composable
+private fun EngineDataScreen(
+    state: RemoteUiState,
+    onCommand: (RemoteCommand) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val ready = state.connectionState is RemoteConnectionState.Ready
+    val obd = state.obd
+    LaunchedEffect(ready) {
+        while (ready) {
+            onCommand(RemoteCommand.Obd)
+            delay(1500)
+        }
+    }
+    LazyColumn(
+        modifier = modifier,
+        contentPadding = PaddingValues(20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        item {
+            Section(tr("Engine")) {
+                MetricRow(tr("Engine speed"), obd?.rpm?.let { "${it.roundToInt()} rpm" } ?: "—")
+                MetricRow(tr("Vehicle speed"), obd?.speed?.let { "${it.roundToInt()} km/h" } ?: "—")
+                MetricRow(tr("Engine load"), obd?.load?.let { "${it.roundToInt()}%" } ?: "—")
+                MetricRow(tr("Throttle"), obd?.throttle?.let { "${it.roundToInt()}%" } ?: "—")
+            }
+        }
+        item {
+            Section(tr("Temperatures")) {
+                MetricRow(tr("Coolant"), obd?.coolant?.let { "${it.roundToInt()}°C" } ?: "—")
+                MetricRow(tr("Intake air"), obd?.intakeTemp?.let { "${it.roundToInt()}°C" } ?: "—")
+                MetricRow(tr("Ambient"), obd?.ambientTemp?.let { "${it.roundToInt()}°C" } ?: "—")
+                MetricRow(tr("Fuel level"), obd?.fuel?.let { "${it.roundToInt()}%" } ?: "—")
+            }
+        }
+        item {
+            Section(tr("Electrical")) {
+                MetricRow(tr("Module voltage"), obd?.moduleVoltage?.let { String.format(Locale.US, "%.1f V", it) } ?: "—")
+                val batt = obd?.batteryVoltage
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(tr("Battery voltage"), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                    Text(
+                        batt?.let { String.format(Locale.US, "%.1f V", it) } ?: "—",
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (batt != null && batt < LOW_BATTERY_VOLTAGE) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                    )
+                }
+            }
+        }
+        item {
+            Section(tr("Vehicle")) {
+                MetricRow("VIN", obd?.vin ?: "—")
+                MetricRow(tr("OBD link"), if (obd?.connected == true) tr("Connected") else tr("Not connected"))
+            }
+        }
+    }
+}
+
+private const val EQ_MODE_MIN = 0
+private const val EQ_MODE_MAX = 6
+private const val LOW_BATTERY_VOLTAGE = 11.8
+private const val G_FORCE_MAX_MS2 = 8.0
+
+private fun formatG(accelMs2: Double?): String =
+    accelMs2?.let { String.format(Locale.US, "%.2f g", it / 9.81) } ?: "—"
+
+private enum class StatusTone { Ok, Warn, Alert, Neutral }
+
+@Composable
+private fun StatusTone.color(): Color = when (this) {
+    StatusTone.Ok -> MaterialTheme.colorScheme.primary
+    StatusTone.Warn -> Color(0xFFE0A32E)
+    StatusTone.Alert -> MaterialTheme.colorScheme.error
+    StatusTone.Neutral -> MaterialTheme.colorScheme.onSurfaceVariant
+}
+
+/** A cabin detection row: shows [activeLabel] in [tone] when value > 0, else "Clear". */
+@Composable
+private fun DetectRow(label: String, value: Int?, activeLabel: String, tone: StatusTone) {
+    val active = (value ?: 0) > 0
+    val shownTone = if (active) tone else StatusTone.Ok
+    val text = when {
+        value == null -> "—"
+        active -> activeLabel
+        else -> tr("Clear")
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(text, fontWeight = FontWeight.SemiBold, color = if (value == null) MaterialTheme.colorScheme.onSurfaceVariant else shownTone.color())
+    }
+}
+
+/** Driver-monitoring level row: 0 = Normal (green), 1 = amber, ≥2 = red. */
+@Composable
+private fun LevelRow(label: String, value: Int?) {
+    val tone = when {
+        value == null -> StatusTone.Neutral
+        value <= 0 -> StatusTone.Ok
+        value == 1 -> StatusTone.Warn
+        else -> StatusTone.Alert
+    }
+    val text = when {
+        value == null -> "—"
+        value <= 0 -> tr("Normal")
+        else -> "${tr("Level")} $value"
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(text, fontWeight = FontWeight.SemiBold, color = tone.color())
+    }
+}
+
+@Composable
+private fun RideHeightCell(corner: String, heightMm: Double?, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(corner, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                heightMm?.let { "${it.roundToInt()} mm" } ?: "—",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+    }
+}
+
+/**
+ * Graphical G-force gauge. Dot is placed by lateral (x) and longitudinal (y)
+ * acceleration, matching the reference GMeterView with an 8 m/s² full-scale.
+ */
+@Composable
+private fun GForceMeter(
+    latAccel: Double?,
+    lonAccel: Double?,
+    modifier: Modifier = Modifier,
+) {
+    val ringColor = MaterialTheme.colorScheme.outlineVariant
+    val axisColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+    val dotColor = MaterialTheme.colorScheme.primary
+    val hasData = latAccel != null || lonAccel != null
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val cx = size.width / 2f
+            val cy = size.height / 2f
+            val radius = min(cx, cy) * 0.86f
+            // Concentric rings at 1/3, 2/3, full scale.
+            for (frac in listOf(1f / 3f, 2f / 3f, 1f)) {
+                drawCircle(
+                    color = ringColor,
+                    radius = radius * frac,
+                    center = Offset(cx, cy),
+                    style = Stroke(width = 2f),
+                )
+            }
+            // Cross-hair axes.
+            drawLine(axisColor, Offset(cx - radius, cy), Offset(cx + radius, cy), strokeWidth = 2f)
+            drawLine(axisColor, Offset(cx, cy - radius), Offset(cx, cy + radius), strokeWidth = 2f)
+            // Position dot: x = lateral, y = longitudinal (up = accelerating forward).
+            val lat = (latAccel ?: 0.0).coerceIn(-G_FORCE_MAX_MS2, G_FORCE_MAX_MS2)
+            val lon = (lonAccel ?: 0.0).coerceIn(-G_FORCE_MAX_MS2, G_FORCE_MAX_MS2)
+            val dx = (lat / G_FORCE_MAX_MS2).toFloat() * radius
+            val dy = (lon / G_FORCE_MAX_MS2).toFloat() * radius
+            if (hasData) {
+                drawCircle(
+                    color = dotColor,
+                    radius = 12f,
+                    center = Offset(cx + dx, cy - dy),
+                )
+            }
+        }
+        if (!hasData) {
+            Text(tr("Waiting for telemetry…"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
 }
 
 @Composable
@@ -5503,6 +6043,10 @@ private enum class AppTab(val label: String, val icon: ImageVector, val showInBo
     Controls("Controls", Icons.Outlined.Tune),
     Camera("Cameras", Icons.Outlined.Videocam),
     Charging("Charge", Icons.Outlined.Bolt),
+    Audio("Audio", Icons.Outlined.GraphicEq, showInBottomBar = false),
+    Cabin("Cabin safety", Icons.Outlined.AirlineSeatReclineNormal, showInBottomBar = false),
+    Performance("Performance", Icons.Outlined.Speed, showInBottomBar = false),
+    Engine("Engine data", Icons.Outlined.Analytics, showInBottomBar = false),
     NavigationHistory("Links", Icons.Outlined.Link, showInBottomBar = false),
     VehicleMap("Vehicle map", Icons.Outlined.DirectionsCar, showInBottomBar = false),
     Settings("Settings", Icons.Outlined.Settings, showInBottomBar = false),
@@ -6219,4 +6763,56 @@ private val ArabicTranslations = mapOf(
     "None" to "لا يوجد",
     "BLE" to "بلوتوث",
     "LAN" to "شبكة",
+    // Reference car-key parity screens (Audio / Cabin / Performance / Engine)
+    "Cabin safety" to "سلامة المقصورة",
+    "Performance" to "الأداء",
+    "Engine data" to "بيانات المحرك",
+    "Equalizer" to "المعادل الصوتي",
+    "EQ mode" to "وضع المعادل",
+    "Lower" to "تخفيض",
+    "Raise" to "رفع",
+    "Sound field" to "المجال الصوتي",
+    "Balance & fade" to "التوازن والتوزيع",
+    "Waiting for audio data…" to "بانتظار بيانات الصوت…",
+    "Occupancy" to "الإشغال",
+    "Occupant" to "راكب",
+    "Present" to "موجود",
+    "Child in cabin" to "طفل في المقصورة",
+    "Detected" to "تم الكشف",
+    "Pet in cabin" to "حيوان أليف في المقصورة",
+    "Seatbelt" to "حزام الأمان",
+    "Check" to "تحقق",
+    "Driver monitoring" to "مراقبة السائق",
+    "Drowsiness" to "النعاس",
+    "Distraction" to "التشتت",
+    "Normal" to "طبيعي",
+    "Level" to "المستوى",
+    "Waiting for cabin data…" to "بانتظار بيانات المقصورة…",
+    "G-force" to "قوة التسارع",
+    "Lateral" to "جانبي",
+    "Longitudinal" to "طولي",
+    "Chassis" to "الهيكل",
+    "Speed" to "السرعة",
+    "Steering angle" to "زاوية التوجيه",
+    "Yaw rate" to "معدل الانعراج",
+    "Ride height" to "ارتفاع التعليق",
+    "LF" to "أ.يسار",
+    "RF" to "أ.يمين",
+    "LR" to "خ.يسار",
+    "RR" to "خ.يمين",
+    "Waiting for telemetry…" to "بانتظار بيانات القياس…",
+    "Engine" to "المحرك",
+    "Engine speed" to "سرعة المحرك",
+    "Vehicle speed" to "سرعة المركبة",
+    "Engine load" to "حمل المحرك",
+    "Throttle" to "دواسة الوقود",
+    "Temperatures" to "درجات الحرارة",
+    "Intake air" to "هواء السحب",
+    "Ambient" to "المحيط",
+    "Fuel level" to "مستوى الوقود",
+    "Electrical" to "الكهرباء",
+    "Module voltage" to "جهد الوحدة",
+    "Battery voltage" to "جهد البطارية",
+    "OBD link" to "اتصال OBD",
+    "Not connected" to "غير متصل",
 )
