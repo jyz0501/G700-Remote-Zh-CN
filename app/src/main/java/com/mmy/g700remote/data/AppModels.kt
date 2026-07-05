@@ -115,6 +115,7 @@ data class ProtocolLogEntry(
 enum class AppLanguage {
     English,
     Arabic,
+    Chinese,
 }
 
 enum class AppTheme {
