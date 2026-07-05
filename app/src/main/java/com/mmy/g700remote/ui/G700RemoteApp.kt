@@ -309,7 +309,11 @@ private const val DARK_MAP_STYLE_JSON = """[
 private fun tr(text: String): String = translate(LocalAppLanguage.current, text)
 
 private fun translate(language: AppLanguage, text: String): String =
-    if (language == AppLanguage.Arabic) ArabicTranslations[text] ?: text else text
+    when (language) {
+        AppLanguage.Arabic -> ArabicTranslations[text] ?: text
+        AppLanguage.Chinese -> ChineseTranslations[text] ?: text
+        else -> text
+    }
 
 @Composable
 fun G700RemoteApp(
@@ -895,6 +899,13 @@ private fun ReleaseNotesDialog(
                         onClick = { notesLanguage = AppLanguage.English },
                     )
                     SegmentedChoice(
+                        label = "中文",
+                        selected = notesLanguage == AppLanguage.Chinese,
+                        enabled = true,
+                        modifier = Modifier.weight(1f),
+                        onClick = { notesLanguage = AppLanguage.Chinese },
+                    )
+                    SegmentedChoice(
                         label = "AR",
                         selected = notesLanguage == AppLanguage.Arabic,
                         enabled = true,
@@ -928,7 +939,7 @@ private fun ReleaseNotesDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text(if (notesLanguage == AppLanguage.Arabic) "تم" else "Done")
+                Text(when (notesLanguage) { AppLanguage.Arabic -> "تم"; AppLanguage.Chinese -> "完成"; else -> "Done" })
             }
         },
     )
@@ -3914,6 +3925,10 @@ private fun SettingsScreen(
                         onAppLanguageChanged(AppLanguage.English)
                     }
                     Spacer(Modifier.width(6.dp))
+                    SegmentedChoice("中文", selected = state.appLanguage == AppLanguage.Chinese, enabled = true) {
+                        onAppLanguageChanged(AppLanguage.Chinese)
+                    }
+                    Spacer(Modifier.width(6.dp))
                     SegmentedChoice("العربية", selected = state.appLanguage == AppLanguage.Arabic, enabled = true) {
                         onAppLanguageChanged(AppLanguage.Arabic)
                     }
@@ -6143,30 +6158,42 @@ private fun formatFriendlyRefreshTime(value: Long): String {
         dayDiff <= 0 -> "${tr("Today")}, $time"
         dayDiff == 1 -> "${tr("Yesterday")}, $time"
         dayDiff in 2..7 -> "${formatDaysAgo(dayDiff, language)}, $time"
-        else -> SimpleDateFormat("d MMM", if (language == AppLanguage.Arabic) Locale.forLanguageTag("ar-BH") else Locale.ENGLISH)
+        else -> SimpleDateFormat("d MMM", when (language) { AppLanguage.Arabic -> Locale.forLanguageTag("ar-BH"); AppLanguage.Chinese -> Locale.SIMPLIFIED_CHINESE; else -> Locale.ENGLISH })
             .format(Date(value))
     }
 }
 
 private fun formatFriendlyClock(value: Long, language: AppLanguage): String {
     val date = Date(value)
-    if (language != AppLanguage.Arabic) return SimpleDateFormat("h:mm a", Locale.ENGLISH).format(date)
-    val calendar = Calendar.getInstance().apply { timeInMillis = value }
-    val hour = calendar.get(Calendar.HOUR)
-        .let { if (it == 0) 12 else it }
-    val minute = calendar.get(Calendar.MINUTE).toString().padStart(2, '0')
-    val suffix = if (calendar.get(Calendar.AM_PM) == Calendar.AM) "صباحاً" else "مساءً"
-    return "$hour:$minute $suffix"
+    return when (language) {
+        AppLanguage.Arabic -> {
+            val calendar = Calendar.getInstance().apply { timeInMillis = value }
+            val hour = calendar.get(Calendar.HOUR)
+                .let { if (it == 0) 12 else it }
+            val minute = calendar.get(Calendar.MINUTE).toString().padStart(2, '0')
+            val suffix = if (calendar.get(Calendar.AM_PM) == Calendar.AM) "صباحاً" else "مساءً"
+            "$hour:$minute $suffix"
+        }
+        AppLanguage.Chinese -> {
+            val calendar = Calendar.getInstance().apply { timeInMillis = value }
+            val hour = calendar.get(Calendar.HOUR_OF_DAY)
+            val minute = calendar.get(Calendar.MINUTE).toString().padStart(2, '0')
+            "${hour}:${minute}"
+        }
+        else -> SimpleDateFormat("h:mm a", Locale.ENGLISH).format(date)
+    }
 }
 
 private fun formatDaysAgo(days: Int, language: AppLanguage): String =
-    if (language == AppLanguage.Arabic) {
-        when (days) {
-            2 -> "قبل يومين"
-            else -> "قبل $days أيام"
+    when (language) {
+        AppLanguage.Arabic -> {
+            when (days) {
+                2 -> "قبل يومين"
+                else -> "قبل $days أيام"
+            }
         }
-    } else {
-        "$days days ago"
+        AppLanguage.Chinese -> "${days}天前"
+        else -> "$days days ago"
     }
 
 private fun formatChargeMode(value: String?): String? =
@@ -6284,8 +6311,8 @@ private data class ReleaseNotesCopy(
 )
 
 private fun releaseNotes(language: AppLanguage): ReleaseNotesCopy =
-    if (language == AppLanguage.Arabic) {
-        ReleaseNotesCopy(
+    when (language) {
+        AppLanguage.Arabic -> ReleaseNotesCopy(
             title = "ما الجديد في الإصدار ${BuildConfig.VERSION_NAME}",
             intro = "إرشادات الكاميرا/الـWi-Fi وخيارات الاتصال السحابي مع ثبات البلوتوث.",
             items = listOf(
@@ -6308,8 +6335,30 @@ private fun releaseNotes(language: AppLanguage): ReleaseNotesCopy =
                 "متوافق مع DisplayMirror 3.3.",
             ),
         )
-    } else {
-        ReleaseNotesCopy(
+        AppLanguage.Chinese -> ReleaseNotesCopy(
+            title = "${BuildConfig.VERSION_NAME} 版本更新内容",
+            intro = "摄像头/Wi-Fi 引导和云端连接选项，以及蓝牙稳定性改进。",
+            items = listOf(
+                "摄像头标签页现在说明摄像头需要 Wi-Fi 或云端（蓝牙无法传输视频）。",
+                "设置中新增"云端优先"/"仅云端"连接选项，与 BLE 和 LAN 并列。",
+                "降低蓝牙负载：更慢、更轻量的状态刷新，以保持与车机的稳定连接。",
+                "更高的 BLE 连接优先级和服务发现重试，减少断连。",
+                "不再将瞬时的局部帧错误（如座舱冷却解析错误）显示为弹窗。",
+                "连接中断时自动重连并重试命令。",
+                "当车辆云端离线时显示更清晰的消息（请在车辆上启用云端并登录）。",
+                "修复 DisplayMirror 3.3 兼容性（协议 v5）—— 解决连接时的"需要更新"错误。",
+                "远程云端控制现已可用：使用配对二维码随时随地连接您的车辆。",
+                "新设置流程：登录后扫描车辆屏幕上的二维码——无需蓝牙搜索或手动输入代码。",
+                "扫描后自动将车辆绑定到云端账户，同时支持蓝牙和 Wi-Fi 本地控制。",
+                "连接修复：蓝牙现在自动发现并连接到最近的车辆，无需手动输入地址。",
+                "空调开关修复，现在可以从主页和空调标签页真正关闭空调。",
+                "摄像头标签页：即时切换车辆报告的所有摄像头。",
+                "为旧版本升级用户提供从设置中登录的功能。",
+                "所有新增屏幕和设置的完整阿拉伯语翻译。",
+                "兼容 DisplayMirror 3.3。",
+            ),
+        )
+        else -> ReleaseNotesCopy(
             title = "What's new in ${BuildConfig.VERSION_NAME}",
             intro = "Camera/Wi-Fi guidance and cloud connection options, plus Bluetooth stability.",
             items = listOf(
@@ -6772,4 +6821,444 @@ private val ArabicTranslations = mapOf(
     "Battery voltage" to "جهد البطارية",
     "OBD link" to "اتصال OBD",
     "Not connected" to "غير متصل",
+)
+
+private val ChineseTranslations = mapOf(
+    // v2.x cloud / camera / controls strings
+    "Account" to "账户",
+    "Alerts arrive while the app is connected to the car." to "应用连接车辆时会收到警报。",
+    "Audio" to "音频",
+    "Balance (L–R)" to "平衡 (左–右)",
+    "Big Bed" to "大床模式",
+    "Cabin cooling" to "座舱冷却",
+    "Camera" to "摄像头",
+    "Camera error: " to "摄像头错误：",
+    "Camera image" to "摄像头图像",
+    "Camera permission is needed to scan the QR code." to "扫描二维码需要摄像头权限。",
+    "Cameras" to "摄像头",
+    "Car Wash" to "洗车模式",
+    "Cinema" to "影院模式",
+    "Cloud" to "云端",
+    "Cloud control" to "云端控制",
+    "Cloud first" to "云端优先",
+    "Cloud only" to "仅云端",
+    "Cameras need Wi-Fi or cloud. Bluetooth can't stream video — connect to the car's Wi-Fi (LAN first in Settings) to view cameras." to "摄像头需要 Wi-Fi 或云端连接。蓝牙无法传输视频——请连接车辆 Wi-Fi（在设置中选择 LAN 优先）以查看摄像头。",
+    "Connect to your car to view cameras." to "连接您的车辆以查看摄像头。",
+    "Connect your car" to "连接您的车辆",
+    "Control your car from anywhere over the DisplayMirror cloud." to "通过 DisplayMirror 云端随时随地控制您的车辆。",
+    "Cool the cabin now" to "立即冷却座舱",
+    "Create an account on the car" to "在车辆上创建账户",
+    "Email" to "邮箱",
+    "Enable Remote Access and open the QR" to "启用远程访问并打开二维码",
+    "Fade (F–R)" to "渐变 (前–后)",
+    "Grant camera access" to "授予摄像头权限",
+    "HVAC" to "空调",
+    "Install DisplayMirror on the car" to "在车辆上安装 DisplayMirror",
+    "LIVE" to "直播",
+    "Light Show" to "灯光秀",
+    "Live view" to "实时画面",
+    "Live view streams best on the same Wi-Fi as the car. Over the cloud, use Snapshot." to "实时画面在与车辆同一 Wi-Fi 下效果最佳。通过云端请使用快照。",
+    "Loudness" to "响度",
+    "New here? Create your account on the car's DisplayMirror screen, then sign in." to "新用户？请在车辆 DisplayMirror 屏幕上创建账户，然后登录。",
+    "No cameras reported by the car yet." to "车辆尚未报告任何摄像头。",
+    "No cloud car linked" to "未关联云端车辆",
+    "Not signed in" to "未登录",
+    "Pairing has been upgraded. Please re-scan your car's QR code once to finish updating." to "配对机制已升级。请重新扫描车辆二维码一次以完成更新。",
+    "On the car's DisplayMirror screen, create your account and sign in. Use the same account in this app." to "在车辆 DisplayMirror 屏幕上创建账户并登录。在此应用中请使用同一账户。",
+    "Password" to "密码",
+    "Pet Mode" to "宠物模式",
+    "Point the camera at the QR code on your car's DisplayMirror screen" to "将摄像头对准车辆 DisplayMirror 屏幕上的二维码",
+    "Re-scan car QR code" to "重新扫描车辆二维码",
+    "Recent alerts" to "最近警报",
+    "Refresh cameras" to "刷新摄像头",
+    "Rescue" to "救援模式",
+    "Resting" to "休息模式",
+    "Romance" to "浪漫模式",
+    "Scan QR code" to "扫描二维码",
+    "Scan car QR code" to "扫描车辆二维码",
+    "Scan it below to pair this phone with your car." to "在下方扫描以将此手机与您的车辆配对。",
+    "Scan the QR code" to "扫描二维码",
+    "Scan the QR code on your car's DisplayMirror screen to pair. The app connects over Bluetooth or Wi-Fi when you're near the car, and over the cloud when you're away." to "扫描车辆 DisplayMirror 屏幕上的二维码进行配对。应用在靠近车辆时通过蓝牙或 Wi-Fi 连接，远离时通过云端连接。",
+    "Scenes" to "场景",
+    "Schedule" to "定时",
+    "Scheduled cooling" to "定时冷却",
+    "Sentinel event" to "哨兵事件",
+    "Sentinel mode" to "哨兵模式",
+    "Setup steps" to "设置步骤",
+    "Sign in" to "登录",
+    "Sign in to enable cloud control, QR pairing, and preference sync. Create the account on your car's DisplayMirror screen." to "登录以启用云端控制、二维码配对和偏好同步。请在车辆 DisplayMirror 屏幕上创建账户。",
+    "Sign out" to "退出登录",
+    "Sign out?" to "确认退出登录？",
+    "Snapshot" to "快照",
+    "Stop live" to "停止直播",
+    "Surround" to "环绕声",
+    "The head unit should have the DisplayMirror app by Baghdady92 installed and set up." to "车机应已安装并配置好 Baghdady92 的 DisplayMirror 应用。",
+    "Turn on Remote Access in DisplayMirror and open the pairing QR code on the car screen." to "在 DisplayMirror 中开启远程访问，并在车辆屏幕上打开配对二维码。",
+    "Use the DisplayMirror account you created on your car's head unit." to "使用您在车辆车机上创建的 DisplayMirror 账户。",
+    "Use without an account (local only)" to "无需账户使用（仅本地）",
+    "Watch my car" to "监控我的车辆",
+    "You'll need to sign in again to use cloud control and sync." to "您需要重新登录以使用云端控制和同步。",
+    "Confirm" to "确认",
+    "Use biometrics or device PIN to continue." to "使用生物识别或设备密码继续。",
+    "Confirm command" to "确认命令",
+    "Send" to "发送",
+    "Cancel" to "取消",
+    "Back" to "返回",
+    "Connect" to "连接",
+    "Connect to Control" to "连接以控制",
+    "Tap to lock" to "点击锁定",
+    "Tap to unlock" to "点击解锁",
+    "DisplayMirror disconnected" to "DisplayMirror 已断开连接",
+    "Bluetooth permission required" to "需要蓝牙权限",
+    "G700 Remote scans for the DisplayMirror BLE service and can also discover DisplayMirror over LAN." to "G700 Remote 扫描 DisplayMirror BLE 服务，也可通过局域网发现 DisplayMirror。",
+    "Grant permissions" to "授予权限",
+    "Set up G700 Remote" to "设置 G700 Remote",
+    "Use your phone as a clean Jetour G700 remote for lock and unlock, climate, windows, lights, charging, and vehicle status when DisplayMirror exposes them." to "将您的手机用作 Jetour G700 的简洁遥控器，在 DisplayMirror 开放功能时实现锁定/解锁、空调、车窗、灯光、充电和车辆状态查看。",
+    "Setup requirements" to "设置要求",
+    "Install DisplayMirror" to "安装 DisplayMirror",
+    "The head unit should have the DisplayMirror app prepared by Baghdady92 installed and configured." to "车机应已安装并配置好 Baghdady92 准备的 DisplayMirror 应用。",
+    "Open DisplayMirror project" to "打开 DisplayMirror 项目",
+    "Enable Remote Access" to "启用远程访问",
+    "In DisplayMirror on the car screen, turn on Remote Access and keep the generated pairing code visible." to "在车辆屏幕的 DisplayMirror 中，开启远程访问并保持生成的配对码可见。",
+    "Enter the pairing code here" to "在此输入配对码",
+    "Type the code below, then scan and select the car connection." to "输入下方代码，然后扫描并选择车辆连接。",
+    "Pairing code" to "配对码",
+    "4 to 8 digits" to "4 到 8 位数字",
+    "Saved on this phone" to "已保存在本机",
+    "Enter the code shown by DisplayMirror" to "输入 DisplayMirror 显示的代码",
+    "Scan after entering the pairing code." to "输入配对码后开始搜索。",
+    "Available connections" to "可用连接",
+    "DisplayMirror app by Baghdady92" to "Baghdady92 的 DisplayMirror 应用",
+    "Scan" to "搜索",
+    "Stop" to "停止",
+    "Clear" to "清除",
+    "Try demo mode" to "试用演示模式",
+    "Demo mode" to "演示模式",
+    "Demo mode only. No command was sent to the car." to "演示模式。未向车辆发送任何命令。",
+    "Demo mode is active" to "演示模式已激活",
+    "Try the app without the car" to "无需车辆试用应用",
+    "Use simulated vehicle data for app review or testing. No commands are sent to the car." to "使用模拟车辆数据进行应用审查或测试。不会向车辆发送任何命令。",
+    "Use this to test app functions when no car is connected. No commands are sent to the car." to "未连接车辆时用于测试应用功能。不会向车辆发送任何命令。",
+    "Enable demo mode" to "启用演示模式",
+    "Disable demo mode" to "关闭演示模式",
+    "Unnamed DisplayMirror device" to "未命名的 DisplayMirror 设备",
+    "Unnamed" to "未命名",
+    "No paired device" to "没有已配对设备",
+    "Refresh status" to "刷新状态",
+    "Shared links" to "已分享链接",
+    "Disconnect" to "断开连接",
+    "More" to "更多",
+    "Settings" to "设置",
+    "Home" to "首页",
+    "Climate" to "空调",
+    "Windows" to "车窗",
+    "Charge" to "充电",
+    "Lights" to "灯光",
+    "Lock" to "锁定",
+    "Unlock" to "解锁",
+    "Locking..." to "正在锁定...",
+    "Unlocking..." to "正在解锁...",
+    "Locked" to "已锁定",
+    "Unlocked" to "已解锁",
+    "Lock state Unknown" to "锁定状态未知",
+    "Ready for remote commands" to "已准备好接收远程命令",
+    "Connect to DisplayMirror" to "连接 DisplayMirror",
+    "Vehicle location" to "车辆位置",
+    "Vehicle map" to "车辆地图",
+    "Expand map" to "展开地图",
+    "No location yet" to "暂无位置信息",
+    "Updated just now" to "刚刚更新",
+    "Updated" to "已更新",
+    "Now" to "现在",
+    "Location will appear after the car reports it." to "车辆报告位置后将在此显示。",
+    "Directions" to "导航",
+    "Source" to "来源",
+    "Car" to "车辆",
+    "Phone" to "手机",
+    "Latitude" to "纬度",
+    "Longitude" to "经度",
+    "Coordinates" to "坐标",
+    "Open location" to "打开位置",
+    "Navigate" to "导航",
+    "Copy" to "复制",
+    "Copied" to "已复制",
+    "Source: car" to "来源：车辆",
+    "Source: phone near car" to "来源：车旁手机",
+    "Waiting for vehicle location" to "等待车辆位置",
+    "Vehicle location source" to "车辆位置来源",
+    "From car" to "来自车辆",
+    "Phone near car" to "车旁手机",
+    "Default uses DisplayMirror location when available. Phone location is only used while connected over BLE and permission is granted." to "默认在可用时使用 DisplayMirror 位置。手机位置仅在通过 BLE 连接且已授权时使用。",
+    "Raw state" to "原始状态",
+    "Unknown" to "未知",
+    "Quick Actions" to "快捷操作",
+    "Vehicle" to "车辆",
+    "Battery" to "电池",
+    "Battery SOC" to "电池电量",
+    "Fuel" to "燃油",
+    "Coolant" to "冷却液",
+    "AC" to "空调",
+    "Air" to "空气",
+    "Air conditioner" to "空调",
+    "Turning off air conditioning is not supported remotely. Please turn it off from the car." to "目前不支持远程关闭空调。请从车辆上关闭。",
+    "A/C" to "A/C",
+    "Aux AC controls" to "辅助空调控制",
+    "A/C compressor" to "空调压缩机",
+    "Left" to "左",
+    "Right" to "右",
+    "Left temp" to "左侧温度",
+    "Right temp" to "右侧温度",
+    "Cabin" to "座舱",
+    "Outside" to "外部",
+    "On" to "开",
+    "Off" to "关",
+    "Fan" to "风扇",
+    "Tap to toggle" to "点击切换",
+    "Circulation" to "循环",
+    "Recirculate" to "内循环",
+    "Recirc" to "内循环",
+    "Fresh" to "外循环",
+    "Fresh air" to "新鲜空气",
+    "Modes" to "模式",
+    "Fast cool" to "快速制冷",
+    "Fast heat" to "快速制热",
+    "Auto defrost" to "自动除霜",
+    "Rear defrost" to "后窗除霜",
+    "Front glass heat" to "前窗加热",
+    "PM2.5 filter" to "PM2.5 过滤",
+    "Steering heat" to "方向盘加热",
+    "Parking AC" to "驻车空调",
+    "Smart" to "智能",
+    "Vent" to "通风",
+    "Heat" to "加热",
+    "Seats" to "座椅",
+    "Driver" to "驾驶员",
+    "Passenger" to "乘客",
+    "Rear Left" to "后排左侧",
+    "Rear Right" to "后排右侧",
+    "Heating" to "加热",
+    "Ventilation" to "通风",
+    "Door glass controls" to "车窗控制",
+    "Open all" to "全部打开",
+    "Close all" to "全部关闭",
+    "Front open" to "前窗打开",
+    "Front close" to "前窗关闭",
+    "Open" to "打开",
+    "Close" to "关闭",
+    "Sunshade" to "遮阳帘",
+    "Sunroof" to "天窗",
+    "Mirrors" to "后视镜",
+    "Fold" to "折叠",
+    "Unfold" to "展开",
+    "Target SOC" to "目标电量",
+    "Parking Charge" to "驻车充电",
+    "Quiet" to "静音模式",
+    "Fast" to "快速模式",
+    "Race Charge" to "极速充电",
+    "Start" to "开始",
+    "Target" to "目标",
+    "Refresh charge mode" to "刷新充电模式",
+    "Charge Telemetry" to "充电数据",
+    "Mode" to "模式",
+    "ETA" to "预计剩余时间",
+    "min" to "分钟",
+    "Pack voltage" to "电池组电压",
+    "Pack current" to "电池组电流",
+    "Pack power" to "电池组功率",
+    "Safety SOC floor" to "安全电量下限",
+    "Lighting" to "灯光",
+    "Hazards" to "双闪灯",
+    "DRL" to "日行灯",
+    "Daytime Running Lights" to "日间行车灯",
+    "Language" to "语言",
+    "App language" to "应用语言",
+    "Theme" to "主题",
+    "Themes & color" to "主题与颜色",
+    "Appearance" to "外观",
+    "Color theme" to "颜色主题",
+    "Launcher icon" to "启动器图标",
+    "Dark" to "深色",
+    "Light" to "浅色",
+    "Minimal" to "极简",
+    "G700 Horizon" to "G700 地平线",
+    "Himalaya Slate" to "喜马拉雅岩板",
+    "Nomad Stone" to "游牧民石",
+    "Modern Pastel" to "现代粉彩",
+    "Black GT" to "黑色 GT",
+    "Horizon GT" to "地平线 GT",
+    "Dune GT" to "沙丘 GT",
+    "DisplayMirror by Baghdady92" to "Baghdady92 的 DisplayMirror",
+    "Pairing" to "配对",
+    "Device" to "设备",
+    "Address" to "地址",
+    "not paired" to "未配对",
+    "Transport" to "传输方式",
+    "Connectivity" to "连接性",
+    "Connectivity & pairing" to "连接与配对",
+    "Forget paired car?" to "忘记配对的车辆？",
+    "This returns the app to first-time setup. You can keep shared-link history or clear it too." to "这将使应用回到首次设置状态。您可以选择保留或清除分享链接记录。",
+    "Keep links" to "保留链接",
+    "Clear links too" to "同时清除链接",
+    "Forget paired car" to "忘记配对车辆",
+    "Clear pairing to restart first-time setup." to "清除配对以重新开始首次设置。",
+    "Bluetooth LE" to "低功耗蓝牙",
+    "Best for nearby remote control." to "最适合近距离遥控。",
+    "Best for close range and remote-key use." to "最适合近距离和遥控钥匙使用。",
+    "LAN / mDNS" to "局域网 / mDNS",
+    "Works when phone and car are on the same Wi-Fi." to "当手机和车辆在同一 Wi-Fi 下时可用。",
+    "Uses CarKey on _carkey._tcp. port 9274 when the phone and head unit share a network." to "当手机与车机在同一网络时，通过 _carkey._tcp. 端口 9274 使用 CarKey。",
+    "Priority" to "优先级",
+    "BLE first" to "蓝牙优先",
+    "LAN first" to "局域网优先",
+    "BLE only" to "仅蓝牙",
+    "LAN only" to "仅局域网",
+    "Active" to "活跃",
+    "State" to "状态",
+    "Last refresh" to "上次刷新",
+    "Last status" to "上次状态",
+    "Current" to "当前",
+    "No status yet" to "暂无状态",
+    "Today" to "今天",
+    "Yesterday" to "昨天",
+    "Connected notification" to "连接通知",
+    "Shows quick controls while the car is connected." to "车辆连接时显示快捷控制。",
+    "Keep a persistent notification with light status and quick actions while connected." to "连接时保持一个包含状态摘要和快捷操作的持久通知。",
+    "Wake when nearby" to "靠近时唤醒",
+    "Wakes the app when the paired car is nearby." to "当已配对的车辆在附近时唤醒应用。",
+    "Android wakes the app when your paired DisplayMirror BLE device advertises nearby. No constant background scan is kept." to "当已配对的 DisplayMirror BLE 设备在附近广播时，Android 会唤醒应用。不会进行持续后台扫描。",
+    "When enabled, Android registers BLE wake automatically after pairing. No companion setup button is required." to "启用后，Android 会在配对后自动注册 BLE 唤醒。无需配套设置按钮。",
+    "Set up companion wake" to "设置配套设备唤醒",
+    "Refresh companion setup" to "刷新配套设备设置",
+    "Companion setup is the preferred Android path for reliable background activation. BLE scan wake remains registered as a fallback." to "配套设备设置是 Android 上可靠后台激活的首选方式。BLE 扫描唤醒作为备选方案保持注册。",
+    "Companion wake is ready." to "配套设备唤醒已就绪。",
+    "Companion setup finished. If Android did not confirm it, the BLE wake scan remains active." to "配套设备设置完成。如果 Android 未确认，BLE 唤醒扫描将保持活跃。",
+    "Pair DisplayMirror before setting up companion wake." to "设置配套设备唤醒前请先配对 DisplayMirror。",
+    "Companion Device setup is not supported on this Android version." to "此 Android 版本不支持配套设备设置。",
+    "Choose the car location source used on Home." to "选择首页使用的车辆位置来源。",
+    "Security" to "安全",
+    "Regional features" to "区域功能",
+    "Show extra controls for cars that support them." to "为支持的车辆显示额外控制。",
+    "Additional regional features" to "额外区域功能",
+    "Show unavailable regional features" to "显示不可用的区域功能",
+    "Adds steering heat, seat heating, and PM2.5 controls for cars that support them." to "为支持的车辆添加方向盘加热、座椅加热和 PM2.5 控制。",
+    "Biometric or PIN gate" to "生物识别或密码验证",
+    "Confirm sensitive controls with phone security." to "通过手机安全验证确认敏感操作。",
+    "Unlock, opening controls, and charge mode changes are gated." to "解锁、打开控制以及充电模式切换需要验证。",
+    "This app controls the DisplayMirror head-unit protocol. It is not an OEM-certified digital key." to "本应用控制 DisplayMirror 车机协议。并非原厂认证的数字钥匙。",
+    "Advanced" to "高级",
+    "Hide diagnostics" to "隐藏诊断",
+    "Show diagnostics" to "显示诊断",
+    "Protocol logging" to "协议日志",
+    "Keep off unless troubleshooting." to "除非排查问题，否则保持关闭。",
+    "Try the app without sending commands to a car." to "在不向车辆发送命令的情况下试用应用。",
+    "Connection" to "连接",
+    "Log entries" to "日志条目",
+    "Status" to "状态",
+    "Ping" to "测试连接",
+    "Car location" to "车辆位置",
+    "Get car location" to "获取车辆位置",
+    "Export redacted protocol log" to "导出脱敏协议日志",
+    "App updates" to "应用更新",
+    "Update required" to "需要更新",
+    "Version check required" to "需要版本检查",
+    "To make the best use of G700 Remote, update now. This version is out of support while a newer release is available." to "为获得最佳体验，请立即更新 G700 Remote。有新版本可用时，此版本将不再受支持。",
+    "G700 Remote needs to check GitHub releases at least every 7 days before vehicle controls can be used." to "G700 Remote 需要至少每 7 天检查一次 GitHub 发布版本，才能使用车辆控制功能。",
+    "G700 Remote is up to date." to "G700 Remote 已是最新版本。",
+    "Current version" to "当前版本",
+    "Last checked" to "上次检查时间",
+    "Available version" to "可用版本",
+    "Download and install" to "下载并安装",
+    "Downloading" to "正在下载",
+    "Check for updates" to "检查更新",
+    "Checking" to "正在检查",
+    "What's new in this version" to "此版本更新内容",
+    "Checks GitHub releases for signed APK updates twice daily." to "每天两次检查 GitHub 发布版本的签名 APK 更新。",
+    "Links" to "链接",
+    "Locations shared to the car can be resent from here." to "可从此处重新发送分享给车辆的位置。",
+    "Sent to car" to "已发送到车辆",
+    "Destination sent to car" to "目的地已发送到车辆",
+    "Destination could not be sent" to "无法发送目的地",
+    "Saved for later" to "已保存稍后使用",
+    "Location not sent" to "位置未发送",
+    "Preparing location" to "正在准备位置",
+    "Reading link details" to "正在读取链接详情",
+    "Short Google Maps links can take a few seconds." to "Google 地图短链接可能需要几秒钟。",
+    "The destination was sent to DisplayMirror and saved in Shared links." to "目的地已发送到 DisplayMirror 并保存在已分享链接中。",
+    "The destination is saved in Shared links so you can resend it later." to "目的地已保存在已分享链接中，您可以稍后重新发送。",
+    "G700 Remote could not read a destination from this share." to "G700 Remote 无法从此分享中读取目的地。",
+    "Done" to "完成",
+    "Clear shared links?" to "清除已分享链接？",
+    "This removes all saved shared-location history from this phone." to "这将删除本机上所有已保存的分享位置记录。",
+    "Clear all" to "全部清除",
+    "Delete shared link?" to "删除分享链接？",
+    "Remove this destination from history?" to "从历史记录中移除该目的地？",
+    "History" to "历史记录",
+    "No shared links yet" to "暂无分享链接",
+    "Share a Google Maps place or geo link to G700 Remote." to "将 Google 地图地点或地理链接分享到 G700 Remote。",
+    "Resend" to "重新发送",
+    "Delete" to "删除",
+    "Developed by Mahmood Majeed with ❤️ in Bahrain 🇧🇭" to "由 Mahmood Majeed 在巴林 🇧🇭 用 ❤️ 开发",
+    "Disconnected" to "已断开",
+    "Scanning" to "正在搜索",
+    "Connecting" to "正在连接",
+    "Discovering" to "正在发现",
+    "Subscribing" to "正在订阅",
+    "Handshaking" to "正在握手",
+    "Connected" to "已连接",
+    "Error" to "错误",
+    "None" to "无",
+    "BLE" to "蓝牙",
+    "LAN" to "局域网",
+    // Reference car-key parity screens (Audio / Cabin / Performance / Engine)
+    "Cabin safety" to "座舱安全",
+    "Performance" to "性能",
+    "Engine data" to "发动机数据",
+    "Equalizer" to "均衡器",
+    "EQ mode" to "均衡模式",
+    "Lower" to "降低",
+    "Raise" to "升高",
+    "Sound field" to "声场",
+    "Balance & fade" to "平衡与渐变",
+    "Waiting for audio data…" to "等待音频数据…",
+    "Occupancy" to "乘员",
+    "Occupant" to "乘员",
+    "Present" to "在场",
+    "Child in cabin" to "座舱内有儿童",
+    "Detected" to "已检测到",
+    "Pet in cabin" to "座舱内有宠物",
+    "Seatbelt" to "安全带",
+    "Check" to "检查",
+    "Driver monitoring" to "驾驶员监测",
+    "Drowsiness" to "疲劳",
+    "Distraction" to "分心",
+    "Normal" to "正常",
+    "Level" to "等级",
+    "Waiting for cabin data…" to "等待座舱数据…",
+    "G-force" to "G 力",
+    "Lateral" to "横向",
+    "Longitudinal" to "纵向",
+    "Chassis" to "底盘",
+    "Speed" to "速度",
+    "Steering angle" to "转向角度",
+    "Yaw rate" to "横摆率",
+    "Ride height" to "悬架高度",
+    "LF" to "左前",
+    "RF" to "右前",
+    "LR" to "左后",
+    "RR" to "右后",
+    "Waiting for telemetry…" to "等待遥测数据…",
+    "Engine" to "发动机",
+    "Engine speed" to "发动机转速",
+    "Vehicle speed" to "车速",
+    "Engine load" to "发动机负载",
+    "Throttle" to "油门",
+    "Temperatures" to "温度",
+    "Intake air" to "进气温度",
+    "Ambient" to "环境温度",
+    "Fuel level" to "燃油量",
+    "Electrical" to "电气",
+    "Module voltage" to "模块电压",
+    "Battery voltage" to "电池电压",
+    "OBD link" to "OBD 连接",
+    "Not connected" to "未连接",
 )
